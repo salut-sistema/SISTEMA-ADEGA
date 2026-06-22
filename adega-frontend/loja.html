@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Loja — Carregando...</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- <link rel="stylesheet" href="style_additions.css"> -->
+  
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍇</text></svg>">
+</head>
+<body>
+
+
+  <!-- HEADER -->
+  <header class="cliente-header">
+    <div class="header-inner">
+      <div class="header-logo">
+        <div class="logo-icon" id="loja-logo"></div>
+        <div>
+          <div class="logo-nome" id="loja-nome">Carregando...</div>
+          <div class="logo-slogan" id="loja-slogan"></div>
+        </div>
+      </div>
+      <div class="busca-container">
+        <span class="busca-icon">🔍</span>
+        <input type="text" id="busca-input" class="busca-input-field" placeholder="Buscar produtos..." aria-label="Buscar produtos">
+      </div>
+      <div class="header-acoes">
+        <button class="btn-busca-mobile" onclick="toggleBuscaMobile()" aria-label="Buscar">🔍</button>
+        <button class="btn-carrinho" onclick="abrirCarrinho()" aria-label="Abrir carrinho">
+          🛒
+          <span class="carrinho-badge" id="carrinho-badge">0</span>
+        </button>
+        <!-- Botão voltar ao admin — só aparece se admin estiver logado na sessão -->
+        <a id="btn-voltar-admin" href="admin.html" style="display:none;background:var(--primary,#5B2D8E);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;">⚙️ Admin</a>
+      </div>
+    </div>
+    <div class="busca-mobile-area" id="busca-mobile-area">
+      <input type="text" class="busca-mobile-input" id="busca-input-mobile" placeholder="Buscar produtos..." oninput="buscarProdutos(this.value)">
+    </div>
+  </header>
+
+  <!-- BANNER -->
+ <!--  <div hidden class="loja-banner" id="loja-banner">
+    <div class="banner-overlay">
+      <p class="banner-texto" id="banner-texto">Bem-vindo!</p>
+    </div>
+  </div> -->
+
+  <!-- CATEGORIAS -->
+  <section class="categorias-section">
+    <div class="categorias-inner">
+      <div class="categorias-scroll" id="categorias-filtro"></div>
+    </div>
+  </section>
+
+  <!-- PRODUTOS -->
+  <main class="catalogo-main">
+    <div id="produtos-grid"></div>
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="cliente-footer">
+    <div class="footer-inner">
+      <div class="footer-logo" id="footer-nome">🍇 Açaí & Cia</div>
+      <div class="footer-info">
+        <span id="footer-endereco"></span><br>
+        <span id="footer-cidade"></span><br>
+        <span id="footer-horario"></span>
+      </div>
+      <div class="footer-redes">
+        <a href="#" id="footer-insta" title="Instagram" target="_blank" rel="noopener">📷</a>
+        <a href="#" id="footer-face" title="Facebook" target="_blank" rel="noopener">📘</a>
+        <a href="#" id="footer-wpp" title="WhatsApp" target="_blank" rel="noopener">💬</a>
+        <a href="#" id="footer-tiktok" title="TikTok" target="_blank" rel="noopener">🎵</a>
+      </div>
+      <p class="footer-copy">Salut-Sistema — Todos os direitos reservados</p>
+    </div>
+  </footer>
+
+  <!-- WPP FLOAT -->
+  <a class="wpp-float" id="wpp-float" href="#" target="_blank" rel="noopener" title="Falar no WhatsApp">💬</a>
+
+  <!-- CARRINHO PANEL — Layout corrigido com scroll interno -->
+  <div class="overlay-carrinho" id="overlay-carrinho" onclick="fecharCarrinho()"></div>
+
+  <div class="carrinho-panel" id="carrinho-panel" role="dialog" aria-label="Carrinho de compras">
+    <!-- HEADER - fixo no topo -->
+    <div class="carrinho-header">
+      <h3>🛒 Meu Carrinho</h3>
+      <button class="btn-fechar-carrinho" onclick="fecharCarrinho()" aria-label="Fechar carrinho">✕</button>
+    </div>
+
+    <!-- ITENS - scroll interno aqui -->
+    <div class="carrinho-itens" id="carrinho-itens">
+      <!-- Renderizado por JS -->
+    </div>
+
+    <!-- FOOTER - fixo no fundo, sem scroll forçado mas com max-height -->
+    <div class="carrinho-footer">
+      <!-- Tipo de entrega -->
+      <div class="tipo-entrega-row">
+        <div class="tipo-entrega-option" id="opc-retirada">
+          <input type="radio" name="tipo-entrega" id="te-retirada" value="retirada" checked>
+          <label for="te-retirada">
+            <span class="te-icon">🏪</span>
+            Retirada
+          </label>
+        </div>
+        <div class="tipo-entrega-option" id="opc-entrega">
+          <input type="radio" name="tipo-entrega" id="te-entrega" value="entrega">
+          <label for="te-entrega">
+            <span class="te-icon">🚚</span>
+            Entrega
+          </label>
+        </div>
+      </div>
+
+      <!-- Endereço (só para entrega) -->
+      <div class="area-endereco" id="area-endereco">
+        <div class="form-grupo">
+          <label for="cliente-endereco">📍 Endereço completo</label>
+          <input type="text" id="cliente-endereco" placeholder="Rua, número, bairro...">
+        </div>
+      </div>
+
+      <!-- Dados do cliente -->
+      <div class="form-grupo">
+        <label for="cliente-nome">👤 Seu nome</label>
+        <input type="text" id="cliente-nome" placeholder="Como posso te chamar?">
+      </div>
+      <div class="form-grupo">
+        <label for="cliente-telefone">📱 Telefone</label>
+        <input type="tel" id="cliente-telefone" placeholder="(11) 99999-9999">
+      </div>
+      <div class="form-grupo">
+        <label for="cliente-pagamento">💳 Pagamento</label>
+        <select id="cliente-pagamento">
+          <option value="PIX">PIX</option>
+          <option value="Dinheiro">Dinheiro</option>
+          <option value="Cartão de Crédito">Cartão de Crédito</option>
+          <option value="Cartão de Débito">Cartão de Débito</option>
+        </select>
+      </div>
+
+      <!-- Totais -->
+      <div class="totais">
+        <div class="total-linha">
+          <span>Subtotal</span>
+          <span id="carrinho-subtotal">R$ 0,00</span>
+        </div>
+        <div class="total-linha">
+          <span>Entrega</span>
+          <span id="carrinho-taxa">—</span>
+        </div>
+        <div class="total-linha total-final">
+          <span>Total</span>
+          <span id="carrinho-total">R$ 0,00</span>
+        </div>
+      </div>
+
+      <!-- Botão sempre visível via sticky -->
+      <button class="btn btn-success btn-block" id="btn-finalizar">
+        📲 Enviar Pedido pelo WhatsApp
+      </button>
+    </div>
+  </div>
+
+  <script src="api.js"></script>
+  <script src="app.js"></script>
+  
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      setTimeout(() => {
+        const bt = document.getElementById("banner-texto");
+        if (bt) bt.textContent = CONFIG.loja.bannerTexto || CONFIG.loja.slogan;
+
+        const fn = document.getElementById("footer-nome");
+        if (fn) fn.textContent = `${CONFIG.loja.logo} ${CONFIG.loja.nome}`;
+
+        const fe = document.getElementById("footer-endereco");
+        if (fe) fe.textContent = CONFIG.contato.endereco;
+
+        const fc = document.getElementById("footer-cidade");
+        if (fc) fc.textContent = CONFIG.contato.cidade;
+
+        const fh = document.getElementById("footer-horario");
+        if (fh && CONFIG.funcionamento.horarios?.length) {
+          fh.textContent = CONFIG.funcionamento.horarios.map(h => `${h.dia}: ${h.hora}`).join(" | ");
+        }
+
+        const insta = document.getElementById("footer-insta");
+        if (insta && CONFIG.contato.instagram) {
+          insta.href = `https://instagram.com/${CONFIG.contato.instagram.replace("@","")}`;
+        }
+
+        const wpp = document.getElementById("footer-wpp");
+        if (wpp) wpp.href = `https://wa.me/${CONFIG.contato.whatsapp}`;
+
+        const sel = document.getElementById("cliente-pagamento");
+        if (sel && CONFIG.pagamento?.formas) {
+          sel.innerHTML = CONFIG.pagamento.formas.map(f => `<option value="${f}">${f}</option>`).join("");
+        }
+
+        const banner = document.getElementById("loja-banner");
+        if (banner && CONFIG.loja.banner) {
+          banner.style.backgroundImage = `url('${CONFIG.loja.banner}')`;
+        }
+      }, 100);
+    });
+
+    function toggleBuscaMobile() {
+      const area = document.getElementById("busca-mobile-area");
+      if (area) {
+        area.classList.toggle("visible");
+        if (area.classList.contains("visible")) {
+          document.getElementById("busca-input-mobile")?.focus();
+        }
+      }
+    }
+    window.toggleBuscaMobile = toggleBuscaMobile;
+  </script>
+</body>
+</html>

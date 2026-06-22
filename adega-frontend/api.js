@@ -185,7 +185,7 @@ function _mostrarLinkLoja() {
 
   // Monta URL pública da loja baseada na URL atual
   const base     = window.location.origin + window.location.pathname.replace("admin.html","");
-  const linkLoja = `${base}index.html?slug=${slug}`;
+  const linkLoja = `${base}loja.html?slug=${slug}`;
 
   document.getElementById("link-loja-banner")?.remove();
 
