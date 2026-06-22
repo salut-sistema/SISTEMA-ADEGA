@@ -20,7 +20,7 @@
 // ============================================================
 const API_BASE = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost"
   ? "http://127.0.0.1:3001/api"                    // ← desenvolvimento local (não altere)
-  : "https://SEU-BACKEND.onrender.com/api";         // ← ⚠️ ALTERE AQUI ao fazer deploy
+  : "https://sistema-adega-onzv.onrender.com/api";         // ← ⚠️ ALTERE AQUI ao fazer deploy
 
 // ── Gerenciamento de sessão da empresa ───────────────────────
 const AUTH = {
