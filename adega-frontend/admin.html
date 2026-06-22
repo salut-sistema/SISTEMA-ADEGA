@@ -54,7 +54,7 @@
           <span class="nav-icon">🏷️</span> Categorias
         </button>
         <button class="adm-nav-btn" data-sec="sec-complementos">
-          <span class="nav-icon">✨</span> Acompanhamentos
+          <span class="nav-icon">📦</span> Estoque
         </button>
         <button class="adm-nav-btn" data-sec="sec-pedidos">
           <span class="nav-icon">📋</span> Pedidos
@@ -116,15 +116,15 @@
         <div id="dash-resumo-estoque" style="display:flex; gap:16px; margin-bottom:20px;"></div>
 
         <div class="dash-grid">
-          <div class="dash-widget">
+          <div class="dash-widget" onclick="mostrarSecao('sec-produtos');TABS.ir('sec-produtos','tab-produtos-lista')" style="cursor:pointer;" title="Ver todos os produtos">
             <div class="dash-widget-titulo">🏆 Mais Pedidos</div>
             <div id="lista-mais-pedidos"><p class="sem-dados">Nenhuma venda ainda.</p></div>
           </div>
-          <div class="dash-widget">
+          <div class="dash-widget" onclick="mostrarSecao('sec-complementos');TABS.ir('sec-complementos','tab-controle-estoque')" style="cursor:pointer;" title="Ver Controle de Estoque">
             <div class="dash-widget-titulo">⚠️ Estoque Baixo</div>
             <div id="lista-estoque-baixo"><p class="sem-dados">Nenhum alerta.</p></div>
           </div>
-          <div class="dash-widget">
+          <div class="dash-widget" onclick="mostrarSecao('sec-produtos');TABS.ir('sec-produtos','tab-produtos-lista')" style="cursor:pointer;" title="Ver produtos vencendo">
             <div class="dash-widget-titulo">⏰ Vencendo em Breve</div>
             <div id="lista-vencendo"><p class="sem-dados">Nenhum produto vencendo.</p></div>
           </div>
@@ -180,13 +180,61 @@
                   <label for="prod-estoque">Estoque</label>
                   <input type="number" id="prod-estoque" min="0" placeholder="Deixe vazio = ilimitado">
                 </div>
+                <!-- Checkbox para ativar controle de estoque por peso -->
+                <div class="form-grupo full" style="padding:12px;background:rgba(91,45,142,.08);border-radius:8px;">
+                  <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:600;">
+                    <input type="checkbox" id="prod-usa-estoque-base" onchange="toggleEstoqueBase(this.checked)" style="width:18px;height:18px;cursor:pointer;">
+                    ☑️ Este produto utiliza Estoque-Base (venda por peso)
+                  </label>
+                  <p style="font-size:12px;color:var(--text-muted,#aaa);margin:6px 0 0 28px;">Use para açaí, sorvete e outros produtos fracionados que compartilham um estoque comum.</p>
+                  <!-- Configuração do estoque-base — aparece ao marcar o checkbox -->
+                  <div id="config-estoque-base" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.1);">
+                    <div class="form-grid" style="gap:10px;">
+                      <div class="form-grupo">
+                        <label for="prod-estoque-base-id">Estoque-Base *</label>
+                        <select id="prod-estoque-base-id">
+                          <option value="">Selecione ou crie um novo...</option>
+                        </select>
+                      </div>
+                      <!-- Campo legado oculto — desconto agora usa a unidade do produto automaticamente -->
+                      <input type="hidden" id="prod-consumo-por-venda" value="0">
+                    </div>
+                    <p style="font-size:12px;color:var(--text-muted);margin:6px 0 4px;">
+                      ✅ O sistema desconta automaticamente a quantidade configurada no campo <strong>Unidade</strong> do produto a cada venda. Não é necessário informar o consumo manualmente.
+                    </p>
+                    <button type="button" class="btn btn-outline btn-sm" onclick="abrirModalNovoEstoqueBase()" style="margin-top:6px;">
+                      ➕ Criar novo Estoque-Base
+                    </button>
+                  </div>
+                </div>
                 <div class="form-grupo">
                   <label for="prod-validade">Data de Validade</label>
                   <input type="date" id="prod-validade">
                 </div>
                 <div class="form-grupo">
-                  <label for="prod-imagem">URL da Imagem</label>
-                  <input type="url" id="prod-imagem" placeholder="https://exemplo.com/foto.jpg">
+                  <label>Imagem do Produto</label>
+                  <!-- Área de upload com drag & drop -->
+                  <div id="upload-area" style="border:2px dashed var(--primary,#5B2D8E);border-radius:10px;padding:16px;text-align:center;cursor:pointer;transition:background .2s;"
+                    onclick="document.getElementById('prod-imagem-file').click()"
+                    ondragover="event.preventDefault();this.style.background='rgba(91,45,142,.15)'"
+                    ondragleave="this.style.background=''"
+                    ondrop="_handleImageDrop(event)">
+                    <!-- Pré-visualização da imagem selecionada -->
+                    <div id="upload-preview" style="display:none;margin-bottom:8px;">
+                      <img id="upload-preview-img" style="max-height:100px;border-radius:8px;object-fit:cover;" alt="preview">
+                    </div>
+                    <div id="upload-placeholder">
+                      <div style="font-size:28px;">🖼️</div>
+                      <div style="font-size:13px;color:var(--text-muted,#aaa);margin-top:4px;">Arraste uma imagem ou clique para selecionar</div>
+                      <div style="font-size:11px;color:var(--text-muted,#aaa);">JPG, PNG, WEBP • Máx 5MB</div>
+                    </div>
+                    <input type="file" id="prod-imagem-file" accept="image/jpeg,image/png,image/webp"
+                      style="display:none" onchange="_handleImageSelect(this)">
+                  </div>
+                  <!-- Campo oculto que guarda base64 ou URL -->
+                  <input type="hidden" id="prod-imagem">
+                  <button type="button" id="btn-remover-imagem" style="display:none;margin-top:6px;font-size:12px;background:none;border:none;color:#e55;cursor:pointer;"
+                    onclick="_removerImagemProduto()">✕ Remover imagem</button>
                 </div>
                 <div class="form-grupo">
                   <label for="prod-emoji">Emoji (se não tiver imagem)</label>
@@ -243,7 +291,9 @@
         <div class="tabs-nav">
           <button class="tab-btn" data-tab="tab-nova-categoria">➕ Nova Categoria</button>
           <button class="tab-btn" data-tab="tab-categorias-lista">📋 Categorias Cadastradas</button>
-          <button class="tab-btn" data-tab="tab-controle-estoque">📦 Controle de Estoque</button>
+          <!-- Acompanhamentos movidos para cá (organização) -->
+          <button class="tab-btn" data-tab="tab-novo-complemento">✨ Novo Acompanhamento</button>
+          <button class="tab-btn" data-tab="tab-complementos-lista">📋 Acompanhamentos Cadastrados</button>
         </div>
 
         <!-- Tab: Nova Categoria -->
@@ -286,24 +336,7 @@
           </div>
         </div>
 
-        <!-- Tab: Controle de Estoque -->
-        <div class="tab-pane" id="tab-controle-estoque">
-          <!-- renderizado por JS -->
-        </div>
-      </section>
-
-      <!-- ============================
-           ACOMPANHAMENTOS (com tabs)
-           ============================ -->
-      <section class="adm-secao" id="sec-complementos">
-        <div class="sec-titulo"><h2>✨ Acompanhamentos</h2></div>
-
-        <div class="tabs-nav">
-          <button class="tab-btn" data-tab="tab-novo-complemento">➕ Novo Acompanhamento</button>
-          <button class="tab-btn" data-tab="tab-complementos-lista">📋 Acompanhamentos Cadastrados</button>
-        </div>
-
-        <!-- Tab: Novo Complemento -->
+        <!-- Tab: Novo Acompanhamento (movido de Acompanhamentos para cá) -->
         <div class="tab-pane" id="tab-novo-complemento">
           <div class="form-card">
             <div class="form-card-titulo" id="form-comp-titulo">Novo Acompanhamento</div>
@@ -331,12 +364,35 @@
           </div>
         </div>
 
-        <!-- Tab: Lista de Complementos -->
+        <!-- Tab: Lista de Acompanhamentos -->
         <div class="tab-pane" id="tab-complementos-lista">
           <div class="form-card">
             <div class="form-card-titulo">Acompanhamentos Cadastrados</div>
             <div id="adm-complementos-lista"><p class="sem-dados">Nenhum acompanhamento.</p></div>
           </div>
+        </div>
+      </section>
+
+      <!-- ============================
+           ESTOQUE (renomeado de Acompanhamentos)
+           Contém: Controle de Estoque + Estoque-Base
+           ============================ -->
+      <section class="adm-secao" id="sec-complementos">
+        <div class="sec-titulo"><h2>📦 Estoque</h2></div>
+
+        <div class="tabs-nav">
+          <button class="tab-btn" data-tab="tab-controle-estoque">📦 Controle de Estoque</button>
+          <button class="tab-btn" data-tab="tab-estoque-base">⚖️ Estoque-Base</button>
+        </div>
+
+        <!-- Tab: Controle de Estoque por Unidade -->
+        <div class="tab-pane" id="tab-controle-estoque">
+          <!-- renderizado por JS -->
+        </div>
+
+        <!-- Tab: Estoque-Base — produtos vendidos por peso -->
+        <div class="tab-pane" id="tab-estoque-base">
+          <!-- renderizado por JS -->
         </div>
       </section>
 
@@ -351,7 +407,6 @@
 
         <div class="tabs-nav">
           <button class="tab-btn" data-tab="tab-pedidos-recebidos">🔔 Pedidos Recebidos</button>
-          <button class="tab-btn" data-tab="tab-historico-pedidos">📜 Histórico de Pedidos</button>
         </div>
 
         <!-- Tab: Pedidos Recebidos -->
@@ -359,14 +414,6 @@
           <div class="form-card">
             <div class="form-card-titulo">Pedidos Recebidos</div>
             <div id="pedidos-recebidos-lista"><p class="sem-dados">Nenhum pedido recebido.</p></div>
-          </div>
-        </div>
-
-        <!-- Tab: Histórico -->
-        <div class="tab-pane" id="tab-historico-pedidos">
-          <div class="form-card">
-            <div class="form-card-titulo">Histórico de Pedidos</div>
-            <div id="pedidos-historico-lista"><p class="sem-dados">Nenhum pedido no histórico.</p></div>
           </div>
         </div>
       </section>
@@ -481,30 +528,84 @@
         <div class="tab-pane" id="tab-cfg-aparencia">
           <div class="config-secao">
             <div class="config-secao-titulo">🎨 Cores do Sistema</div>
-            <div class="form-grid" style="grid-template-columns: repeat(auto-fill, minmax(140px,1fr));">
-              <div class="form-grupo">
-                <label for="cfg-cor-primary">Cor Primária</label>
-                <input type="color" id="cfg-cor-primary" value="#5B2D8E">
+            <p style="font-size:13px;color:var(--text-muted);margin:-4px 0 16px;">Personalize as cores de cada elemento do painel e da loja do cliente.</p>
+
+            <!-- GRUPO 1: Destaques -->
+            <div style="margin-bottom:20px;">
+              <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.08);">
+                🎯 Destaques — Botões, links, badges e valores
               </div>
-              <div class="form-grupo">
-                <label for="cfg-cor-secondary">Cor Secundária</label>
-                <input type="color" id="cfg-cor-secondary" value="#E91E8C">
-              </div>
-              <div class="form-grupo">
-                <label for="cfg-cor-bg">Cor do Fundo</label>
-                <input type="color" id="cfg-cor-bg" value="#0F0A1A">
-              </div>
-              <div class="form-grupo">
-                <label for="cfg-cor-surface">Cor da Superfície</label>
-                <input type="color" id="cfg-cor-surface" value="#1A1030">
-              </div>
-              <div class="form-grupo">
-                <label for="cfg-cor-text">Cor do Texto</label>
-                <input type="color" id="cfg-cor-text" value="#F0EAF8">
+              <div class="form-grid" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr));">
+                <div class="form-grupo">
+                  <label for="cfg-cor-primary">Cor Principal</label>
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <input type="color" id="cfg-cor-primary" value="#5B2D8E" oninput="previewCores()">
+                    <span style="font-size:12px;color:var(--text-muted);">Botões, nav ativa, destaques</span>
+                  </div>
+                </div>
+                <div class="form-grupo">
+                  <label for="cfg-cor-secondary">Cor Secundária</label>
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <input type="color" id="cfg-cor-secondary" value="#E91E8C" oninput="previewCores()">
+                    <span style="font-size:12px;color:var(--text-muted);">Preços, ícones, gradientes</span>
+                  </div>
+                </div>
               </div>
             </div>
+
+            <!-- GRUPO 2: Fundos -->
+            <div style="margin-bottom:20px;">
+              <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.08);">
+                🖼️ Fundos — Planos de fundo da tela e dos cards
+              </div>
+              <div class="form-grid" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr));">
+                <div class="form-grupo">
+                  <label for="cfg-cor-bg">Fundo Principal</label>
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <input type="color" id="cfg-cor-bg" value="#0F0A1A" oninput="previewCores()">
+                    <span style="font-size:12px;color:var(--text-muted);">Cor de fundo da tela toda</span>
+                  </div>
+                </div>
+                <div class="form-grupo">
+                  <label for="cfg-cor-surface">Segundo Fundo</label>
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <input type="color" id="cfg-cor-surface" value="#1A1030" oninput="previewCores()">
+                    <span style="font-size:12px;color:var(--text-muted);">Cards, modais, painéis internos</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- GRUPO 3: Texto -->
+            <div style="margin-bottom:20px;">
+              <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.08);">
+                🔤 Texto — Cor das letras em todo o sistema
+              </div>
+              <div class="form-grid" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr));">
+                <div class="form-grupo">
+                  <label for="cfg-cor-text">Texto Principal</label>
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <input type="color" id="cfg-cor-text" value="#F0EAF8" oninput="previewCores()">
+                    <span style="font-size:12px;color:var(--text-muted);">Títulos, parágrafos, labels</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Preview ao vivo -->
+            <div style="background:var(--surface,#1A1030);border-radius:12px;padding:16px;margin-bottom:16px;border:1px solid rgba(255,255,255,.08);">
+              <div style="font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:10px;">👁️ Preview ao vivo</div>
+              <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+                <button class="btn btn-primary" style="pointer-events:none;">Botão Principal</button>
+                <button class="btn btn-outline" style="pointer-events:none;">Botão Outline</button>
+                <span class="badge-success">Entregue</span>
+                <span class="badge-warning">Pendente</span>
+                <span style="font-size:18px;font-weight:800;color:var(--secondary);">R$ 49,90</span>
+              </div>
+            </div>
+
             <div class="form-acoes">
-              <button type="button" class="btn btn-outline" onclick="previewCores()">👁️ Preview</button>
+              <button type="button" class="btn btn-outline" onclick="previewCores()">👁️ Atualizar Preview</button>
               <button type="button" class="btn btn-primary" onclick="salvarConfig()">💾 Salvar Aparência</button>
             </div>
           </div>
@@ -540,17 +641,16 @@
 
           <div class="config-secao">
             <div class="config-secao-titulo">🔐 Segurança</div>
-            <div class="form-grid">
-              <div class="form-grupo">
-                <label for="cfg-senha-adm">Senha do Painel</label>
-                <input type="password" id="cfg-senha-adm" placeholder="••••••••" autocomplete="new-password">
-              </div>
-              <div class="form-grupo">
-                <label for="cfg-senha-conf">Senha para Confirmações</label>
-                <input type="password" id="cfg-senha-conf" placeholder="••••••••" autocomplete="new-password">
+            <div style="background:rgba(91,45,142,.12);border:1px solid rgba(91,45,142,.3);border-radius:10px;padding:14px 16px;display:flex;gap:12px;align-items:flex-start;">
+              <span style="font-size:22px;line-height:1;">🔒</span>
+              <div>
+                <div style="font-size:14px;font-weight:700;margin-bottom:4px;">Senhas bloqueadas para edição</div>
+                <div style="font-size:13px;color:var(--text-muted);line-height:1.6;">As senhas do painel e de confirmação estão protegidas e <strong>só podem ser alteradas diretamente no código-fonte</strong> pelo programador responsável. Isso garante maior segurança ao sistema.</div>
               </div>
             </div>
-            <p style="font-size:12px;color:var(--text-muted);margin-top:8px;">⚠️ Deixe em branco para manter as senhas atuais.</p>
+            <!-- Campos ocultos mantidos apenas para compatibilidade com salvarConfig() -->
+            <input type="hidden" id="cfg-senha-adm" value="">
+            <input type="hidden" id="cfg-senha-conf" value="">
           </div>
 
           <div class="config-secao">
@@ -688,6 +788,276 @@
       });
     }
     window.limparDados = limparDados;
+  </script>
+
+  <!-- ============================================================
+       MODAL — Novo Estoque-Base
+       Aparece ao clicar em "Criar novo Estoque-Base" no form de produto
+       ============================================================ -->
+  <div id="modal-novo-estoque-base" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;align-items:center;justify-content:center;">
+    <div style="background:var(--surface,#1A1030);border-radius:16px;padding:28px;width:90%;max-width:440px;border:1px solid var(--primary,#5B2D8E);">
+      <h3 style="margin:0 0 20px;">⚖️ Novo Estoque-Base</h3>
+      <div class="form-grupo" style="margin-bottom:14px;">
+        <label>Nome do estoque *</label>
+        <input type="text" id="eb-nome" placeholder="Ex: Açaí, Sorvete, Creme de Ninho">
+      </div>
+      <div class="form-grid" style="gap:12px;margin-bottom:14px;">
+        <div class="form-grupo">
+          <label>Unidade de medida *</label>
+          <select id="eb-unidade">
+            <option value="kg">Quilograma (kg)</option>
+            <option value="L">Litro (L)</option>
+          </select>
+        </div>
+        <div class="form-grupo">
+          <label>Quantidade inicial *</label>
+          <input type="number" id="eb-quantidade" min="0" step="0.1" placeholder="Ex: 20">
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button class="btn btn-outline" onclick="document.getElementById('modal-novo-estoque-base').style.display='none'">Cancelar</button>
+        <button class="btn btn-primary" onclick="salvarNovoEstoqueBase()">💾 Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Script: Upload de imagem, Estoque-Base e funções auxiliares -->
+  <script>
+    // ============================================================
+    // UPLOAD DE IMAGEM — converte para base64 e exibe preview
+    // ============================================================
+
+    // Chamado quando usuário seleciona arquivo pelo input
+    function _handleImageSelect(input) {
+      const file = input.files[0];
+      if (file) _processarImagem(file);
+    }
+
+    // Chamado quando usuário solta arquivo na área de drop
+    function _handleImageDrop(event) {
+      event.preventDefault();
+      document.getElementById("upload-area").style.background = "";
+      const file = event.dataTransfer.files[0];
+      if (file) _processarImagem(file);
+    }
+
+    // Valida e converte imagem para base64
+    function _processarImagem(file) {
+      const tipos  = ["image/jpeg","image/png","image/webp"];
+      const maxMB  = 5;
+
+      if (!tipos.includes(file.type)) {
+        alert("❌ Formato inválido. Use JPG, PNG ou WEBP.");
+        return;
+      }
+      if (file.size > maxMB * 1024 * 1024) {
+        alert(`❌ Imagem muito grande. Máximo ${maxMB}MB.`);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const base64 = e.target.result;
+        // Guarda base64 no campo oculto (compatível com o campo prod-imagem)
+        document.getElementById("prod-imagem").value = base64;
+        // Exibe preview
+        document.getElementById("upload-preview-img").src = base64;
+        document.getElementById("upload-preview").style.display = "block";
+        document.getElementById("upload-placeholder").style.display = "none";
+        document.getElementById("btn-remover-imagem").style.display = "block";
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // Remove imagem selecionada
+    function _removerImagemProduto() {
+      document.getElementById("prod-imagem").value = "";
+      document.getElementById("prod-imagem-file").value = "";
+      document.getElementById("upload-preview").style.display = "none";
+      document.getElementById("upload-placeholder").style.display = "block";
+      document.getElementById("btn-remover-imagem").style.display = "none";
+    }
+    window._removerImagemProduto = _removerImagemProduto;
+
+    // Popula preview ao editar produto que já tem imagem
+    function _preencherPreviewImagem(url) {
+      if (!url) { _removerImagemProduto(); return; }
+      document.getElementById("prod-imagem").value = url;
+      document.getElementById("upload-preview-img").src = url;
+      document.getElementById("upload-preview").style.display = "block";
+      document.getElementById("upload-placeholder").style.display = "none";
+      document.getElementById("btn-remover-imagem").style.display = "block";
+    }
+    window._preencherPreviewImagem = _preencherPreviewImagem;
+
+    // ============================================================
+    // ESTOQUE-BASE — funções do formulário de produto
+    // ============================================================
+
+    // Mostra/esconde a configuração de estoque-base no form de produto
+    function toggleEstoqueBase(ativo) {
+      const cfg      = document.getElementById("config-estoque-base");
+      const estInput = document.getElementById("prod-estoque");
+      cfg.style.display = ativo ? "block" : "none";
+      estInput.disabled = ativo; // desativa estoque por unidade quando usa base
+      if (ativo) _carregarSelectEstoqueBase();
+    }
+    window.toggleEstoqueBase = toggleEstoqueBase;
+
+    // Preenche o select com os estoques-base cadastrados
+    function _carregarSelectEstoqueBase() {
+      const sel   = document.getElementById("prod-estoque-base-id");
+      const lista = (typeof STATE !== "undefined" ? STATE.get("estoquesBases") : null) || [];
+      sel.innerHTML = `<option value="">Selecione...</option>` +
+        lista.map(e => `<option value="${e.id}">${e.nome} (${e.quantidade.toFixed(2)} ${e.unidade})</option>`).join("");
+    }
+
+    // Abre o modal de criação de novo estoque-base
+    function abrirModalNovoEstoqueBase() {
+      document.getElementById("modal-novo-estoque-base").style.display = "flex";
+    }
+    window.abrirModalNovoEstoqueBase = abrirModalNovoEstoqueBase;
+
+    // Salva novo estoque-base via API
+    async function salvarNovoEstoqueBase() {
+      const nome      = document.getElementById("eb-nome").value.trim();
+      const unidade   = document.getElementById("eb-unidade").value;
+      const quantidade = parseFloat(document.getElementById("eb-quantidade").value) || 0;
+
+      if (!nome) { alert("Informe o nome do estoque-base."); return; }
+
+      try {
+        const novo = await API_ESTOQUE_BASE.criar({ nome, unidade, quantidade });
+        // Atualiza estado local
+        const lista = STATE.get("estoquesBases") || [];
+        STATE.set("estoquesBases", [...lista, novo]);
+        // Fecha modal e atualiza select
+        document.getElementById("modal-novo-estoque-base").style.display = "none";
+        _carregarSelectEstoqueBase();
+        document.getElementById("prod-estoque-base-id").value = novo.id;
+        MODAL.toast(`Estoque-Base "${nome}" criado! ✅`);
+      } catch(e) {
+        alert("Erro ao criar estoque-base: " + e.message);
+      }
+    }
+    window.salvarNovoEstoqueBase = salvarNovoEstoqueBase;
+
+    // ============================================================
+    // ESTOQUE-BASE — renderização da aba no painel de estoque
+    // ============================================================
+    function renderizarEstoqueBase() {
+      const container = document.getElementById("tab-estoque-base");
+      if (!container) return;
+
+      const lista = (typeof STATE !== "undefined" ? STATE.get("estoquesBases") : null) || [];
+
+      container.innerHTML = `
+        <div class="form-card">
+          <div class="form-card-titulo" style="display:flex;justify-content:space-between;align-items:center;">
+            ⚖️ Estoques-Base
+            <button class="btn btn-primary btn-sm" onclick="abrirModalNovoEstoqueBase()">➕ Novo</button>
+          </div>
+          ${lista.length === 0
+            ? `<p class="sem-dados">Nenhum estoque-base cadastrado. Crie um ao adicionar um produto por peso.</p>`
+            : lista.map(eb => {
+                // Produtos vinculados a este estoque-base
+                const produtos = (STATE.get("produtos") || []).filter(p => p.estoqueBaseId === eb.id);
+                const alerta   = eb.quantidade <= 1 ? `<span class="badge-danger">⚠️ Baixo</span>` : "";
+                return `
+                  <div class="adm-item">
+                    <div class="adm-item-info">
+                      <strong>${eb.nome} ${alerta}</strong>
+                      <small>
+                        Disponível: <strong>${eb.quantidade.toFixed(3)} ${eb.unidade}</strong>
+                        | Produtos vinculados: ${produtos.length}
+                        ${produtos.length ? `(${produtos.map(p=>p.nome).join(", ")})` : ""}
+                      </small>
+                    </div>
+                    <div class="adm-item-acoes" style="gap:8px;flex-wrap:wrap;">
+                      <button class="btn btn-outline btn-sm" onclick="movimentarEstoqueBase('${eb.id}','entrada')">➕ Entrada</button>
+                      <button class="btn btn-outline btn-sm" onclick="movimentarEstoqueBase('${eb.id}','saida')">➖ Saída</button>
+                      <button class="btn btn-outline btn-sm" onclick="verHistoricoEstoqueBase('${eb.id}')">📋 Histórico</button>
+                      <button class="btn btn-outline btn-sm" style="color:#e55;" onclick="excluirEstoqueBase('${eb.id}')">🗑️</button>
+                    </div>
+                  </div>`;
+              }).join("")
+          }
+        </div>`;
+    }
+    window.renderizarEstoqueBase = renderizarEstoqueBase;
+
+    // Abre prompt para movimentar estoque-base
+    async function movimentarEstoqueBase(id, tipo) {
+      const qtd  = parseFloat(prompt(`Quantidade a ${tipo === "entrada" ? "adicionar" : "remover"} (em kg/L):`));
+      if (isNaN(qtd) || qtd <= 0) return;
+      const desc = prompt("Descrição (opcional):") || "";
+      try {
+        const eb   = await API_ESTOQUE_BASE.movimentar(id, tipo, qtd, desc);
+        const lista = STATE.get("estoquesBases") || [];
+        STATE.set("estoquesBases", lista.map(e => e.id === id ? eb : e));
+        renderizarEstoqueBase();
+        MODAL.toast("Estoque atualizado! ✅");
+      } catch(e) { alert("Erro: " + e.message); }
+    }
+    window.movimentarEstoqueBase = movimentarEstoqueBase;
+
+    // Exibe histórico de movimentações do estoque-base
+    function verHistoricoEstoqueBase(id) {
+      const lista = STATE.get("estoquesBases") || [];
+      const eb    = lista.find(e => e.id === id);
+      if (!eb) return;
+
+      const hist = (eb.movimentacoes || []).slice().reverse().slice(0, 20);
+      const linhas = hist.length
+        ? hist.map(m => `
+            <tr>
+              <td>${new Date(m.data).toLocaleString("pt-BR")}</td>
+              <td style="color:${m.tipo==="entrada"?"#4caf50":m.tipo==="saida"?"#e55":"#aaa"}">${m.tipo}</td>
+              <td>${m.quantidade?.toFixed(3)} ${eb.unidade}</td>
+              <td>${m.descricao || "-"}</td>
+            </tr>`).join("")
+        : `<tr><td colspan="4" style="text-align:center;color:#aaa">Sem movimentações</td></tr>`;
+
+      MODAL.abrir(`
+        <h3>📋 Histórico — ${eb.nome}</h3>
+        <p style="color:#aaa;margin-bottom:12px;">Últimas 20 movimentações</p>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead><tr style="text-align:left;border-bottom:1px solid #333;">
+              <th style="padding:6px">Data</th><th>Tipo</th><th>Qtd</th><th>Descrição</th>
+            </tr></thead>
+            <tbody>${linhas}</tbody>
+          </table>
+        </div>
+      `);
+    }
+    window.verHistoricoEstoqueBase = verHistoricoEstoqueBase;
+
+    // Exclui estoque-base
+    async function excluirEstoqueBase(id) {
+      if (!confirm("Excluir este estoque-base? Os produtos vinculados perderão a referência.")) return;
+      try {
+        await API_ESTOQUE_BASE.excluir(id);
+        const lista = STATE.get("estoquesBases") || [];
+        STATE.set("estoquesBases", lista.filter(e => e.id !== id));
+        renderizarEstoqueBase();
+        MODAL.toast("Estoque-base excluído.");
+      } catch(e) { alert("Erro: " + e.message); }
+    }
+    window.excluirEstoqueBase = excluirEstoqueBase;
+
+    // Registra renderizarEstoqueBase na inicialização das tabs
+    document.addEventListener("DOMContentLoaded", () => {
+      document.querySelectorAll(".adm-nav-btn, .tab-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          setTimeout(() => {
+            if (document.getElementById("tab-estoque-base")?.classList.contains("active")) {
+              renderizarEstoqueBase();
+            }
+          }, 60);
+        });
+      });
+    });
   </script>
 </body>
 </html>

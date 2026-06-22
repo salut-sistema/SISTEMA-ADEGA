@@ -1,11 +1,28 @@
 // ============================================================
 //  api.js — Cliente HTTP Multi-Tenant (SaaS)
-//  Carregado ANTES do app.js
+//  Deve ser carregado ANTES do app.js nos dois HTMLs
 // ============================================================
 
-const API_BASE = "http://127.0.0.1:3001/api";
+// ============================================================
+// 🚀 PASSO 1 — DEPLOY: ALTERE A URL DO BACKEND AQUI
+// ============================================================
+// Em desenvolvimento (local): deixe como está, funciona automático.
+// Em produção (Render): substitua "SEU-BACKEND" pela URL real do Render.
+//
+// Como obter a URL do Render:
+//   1. Acesse https://render.com e faça login
+//   2. Clique no seu serviço backend
+//   3. Copie a URL que aparece no topo (ex: https://adega-api.onrender.com)
+//   4. Cole aqui substituindo "SEU-BACKEND.onrender.com"
+//
+// Exemplo final:
+//   : "https://adega-api.onrender.com/api";
+// ============================================================
+const API_BASE = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost"
+  ? "http://127.0.0.1:3001/api"                    // ← desenvolvimento local (não altere)
+  : "https://SEU-BACKEND.onrender.com/api";         // ← ⚠️ ALTERE AQUI ao fazer deploy
 
-// ── Token da Empresa ─────────────────────────────────────────
+// ── Gerenciamento de sessão da empresa ───────────────────────
 const AUTH = {
   salvar(token, empresaId, nome, slug) {
     sessionStorage.setItem("empresa_token", token);
@@ -18,15 +35,13 @@ const AUTH = {
   nome()      { return sessionStorage.getItem("empresa_nome"); },
   slug()      { return sessionStorage.getItem("empresa_slug"); },
   logado()    { return !!this.token(); },
-  limpar() {
-    ["empresa_token","empresa_id","empresa_nome","empresa_slug"]
-      .forEach(k => sessionStorage.removeItem(k));
-  },
+  limpar()    { ["empresa_token","empresa_id","empresa_nome","empresa_slug"].forEach(k => sessionStorage.removeItem(k)); },
 };
 
-// ── Fetch genérico ───────────────────────────────────────────
+// ── Fetch genérico com tratamento de erro ────────────────────
 async function apiFetch(method, endpoint, body = null, publico = false) {
   const headers = { "Content-Type": "application/json" };
+  // Injeta token de autenticação nas rotas protegidas
   if (!publico && AUTH.logado()) headers["X-Empresa-Token"] = AUTH.token();
   const opts = { method, headers };
   if (body) opts.body = JSON.stringify(body);
@@ -36,43 +51,121 @@ async function apiFetch(method, endpoint, body = null, publico = false) {
   return json.data;
 }
 
-// ── APIs ─────────────────────────────────────────────────────
-const API_AUTH       = { async login(l,s)    { return apiFetch("POST","/login",{login:l,senha:s},true); } };
-const API_LOJA       = { async carregar(slug) { return apiFetch("GET",`/loja/${slug}`,null,true); } };
-const API_PRODUTOS   = {
-  async listar()       { return apiFetch("GET",   "/produtos"); },
-  async criar(d)       { return apiFetch("POST",  "/produtos", d); },
-  async editar(id,d)   { return apiFetch("PUT",   `/produtos/${id}`, d); },
-  async excluir(id)    { return apiFetch("DELETE",`/produtos/${id}`); },
-  async pausar(id)     { return apiFetch("PATCH", `/produtos/${id}/pausar`); },
+// ── APIs disponíveis ─────────────────────────────────────────
+const API_AUTH   = { async login(l,s) { return apiFetch("POST","/login",{login:l,senha:s},true); } };
+const API_LOJA   = { async carregar(slug) { return apiFetch("GET",`/loja/${slug}`,null,true); } };
+
+const API_PRODUTOS = {
+  async listar()      { return apiFetch("GET",   "/produtos"); },
+  async criar(d)      { return apiFetch("POST",  "/produtos", d); },
+  async editar(id,d)  { return apiFetch("PUT",   `/produtos/${id}`, d); },
+  async excluir(id)   { return apiFetch("DELETE",`/produtos/${id}`); },
+  async pausar(id)    { return apiFetch("PATCH", `/produtos/${id}/pausar`); },
 };
+
 const API_CATEGORIAS = {
-  async listar()       { return apiFetch("GET",   "/categorias"); },
-  async criar(d)       { return apiFetch("POST",  "/categorias", d); },
-  async editar(id,d)   { return apiFetch("PUT",   `/categorias/${id}`, d); },
-  async excluir(id)    { return apiFetch("DELETE",`/categorias/${id}`); },
-  async pausar(id)     { return apiFetch("PATCH", `/categorias/${id}/pausar`); },
+  async listar()      { return apiFetch("GET",   "/categorias"); },
+  async criar(d)      { return apiFetch("POST",  "/categorias", d); },
+  async editar(id,d)  { return apiFetch("PUT",   `/categorias/${id}`, d); },
+  async excluir(id)   { return apiFetch("DELETE",`/categorias/${id}`); },
+  async pausar(id)    { return apiFetch("PATCH", `/categorias/${id}/pausar`); },
 };
+
 const API_COMPLEMENTOS = {
-  async listar()       { return apiFetch("GET",   "/complementos"); },
-  async criar(d)       { return apiFetch("POST",  "/complementos", d); },
-  async editar(id,d)   { return apiFetch("PUT",   `/complementos/${id}`, d); },
-  async excluir(id)    { return apiFetch("DELETE",`/complementos/${id}`); },
-  async pausar(id)     { return apiFetch("PATCH", `/complementos/${id}/pausar`); },
+  async listar()      { return apiFetch("GET",   "/complementos"); },
+  async criar(d)      { return apiFetch("POST",  "/complementos", d); },
+  async editar(id,d)  { return apiFetch("PUT",   `/complementos/${id}`, d); },
+  async excluir(id)   { return apiFetch("DELETE",`/complementos/${id}`); },
+  async pausar(id)    { return apiFetch("PATCH", `/complementos/${id}/pausar`); },
 };
+
 const API_PEDIDOS = {
   async listar()              { return apiFetch("GET",   "/pedidos"); },
   async criar(d)              { return apiFetch("POST",  "/pedidos", d); },
+  // Pedido público: cliente envia sem precisar de token admin
+  async criarPublico(slug,d)  { return apiFetch("POST",  `/pedidos/publico/${slug}`, d, true); },
   async atualizarStatus(id,s) { return apiFetch("PUT",   `/pedidos/${id}/status`,{status:s}); },
+  async editar(id,d)          { return apiFetch("PUT",   `/pedidos/${id}`, d); },
   async excluir(id)           { return apiFetch("DELETE",`/pedidos/${id}`); },
 };
+
 const API_CONFIG    = {
   async carregar()  { return apiFetch("GET", "/config"); },
   async salvar(d)   { return apiFetch("POST","/config", d); },
 };
+
 const API_DASHBOARD = { async carregar() { return apiFetch("GET","/dashboard"); } };
 
-// ── Aplica config do banco no CONFIG do app ──────────────────
+// API Estoque-Base — controle de estoque por peso
+const API_ESTOQUE_BASE = {
+  async listar()                    { return apiFetch("GET",   "/estoque-base"); },
+  async criar(d)                    { return apiFetch("POST",  "/estoque-base", d); },
+  async editar(id,d)                { return apiFetch("PUT",   `/estoque-base/${id}`, d); },
+  async excluir(id)                 { return apiFetch("DELETE",`/estoque-base/${id}`); },
+  async movimentar(id, tipo, qtd, desc) {
+    return apiFetch("PATCH", `/estoque-base/${id}/movimentar`, { tipo, quantidade: qtd, descricao: desc });
+  },
+};
+
+// ============================================================
+// SINCRONIZAÇÃO EM TEMPO REAL (Polling)
+// ── O admin recebe novos pedidos automaticamente a cada 15s
+// ── Sem necessidade de WebSocket, funciona em qualquer hospedagem
+// ============================================================
+let _pollingInterval = null;
+let _ultimoPedidoData = null; // controla se há pedidos novos
+
+function _iniciarPolling() {
+  if (_pollingInterval) return;
+
+  _pollingInterval = setInterval(async () => {
+    try {
+      const pedidos = await API_PEDIDOS.listar();
+      const atual   = STATE.get("pedidos") || [];
+
+      if (pedidos.length !== atual.length) {
+        const novos = pedidos.length - atual.length;
+        STATE.set("pedidos", pedidos);
+
+        // Sincroniza também produtos (para atualizar estoque e vendas)
+        const [produtos, estoquesBases] = await Promise.all([
+          API_PRODUTOS.listar(),
+          API_ESTOQUE_BASE.listar(),
+        ]);
+        STATE.set("produtos",      produtos      || []);
+        STATE.set("estoquesBases", estoquesBases || []);
+
+        // Notificação e atualização da interface
+        if (novos > 0) MODAL.toast(`🔔 ${novos} novo(s) pedido(s) recebido(s)!`);
+
+        if (typeof renderizarAdmin === "function") renderizarAdmin();
+        if (typeof DASHBOARD !== "undefined")      DASHBOARD.atualizar();
+
+        // Atualiza aba de pedidos se estiver visível
+        const paneRecebidos = document.getElementById("tab-pedidos-recebidos");
+        if (paneRecebidos?.classList.contains("ativo")) {
+          if (typeof renderizarAdmPedidos === "function") renderizarAdmPedidos();
+        }
+
+        // Atualiza controle de estoque se estiver visível
+        const paneEstoque = document.getElementById("tab-controle-estoque");
+        if (paneEstoque?.classList.contains("ativo") && typeof renderizarControleEstoque === "function") {
+          renderizarControleEstoque();
+        }
+      }
+    } catch(e) {
+      console.warn("[Polling] Erro:", e.message);
+    }
+  }, 12000); // verifica a cada 12 segundos
+}
+
+function _pararPolling() {
+  if (_pollingInterval) { clearInterval(_pollingInterval); _pollingInterval = null; }
+}
+
+// ============================================================
+// APPLY CONFIG — aplica configurações do banco no objeto CONFIG
+// ============================================================
 function _aplicarConfig(config) {
   if (!config || !Object.keys(config).length) return;
   if (config.loja)          CONFIG.loja          = { ...CONFIG.loja,          ...config.loja };
@@ -83,44 +176,39 @@ function _aplicarConfig(config) {
   if (config.pagamento)     CONFIG.pagamento     = { ...CONFIG.pagamento,     ...config.pagamento };
 }
 
-// ── Mostra link da loja no topo do dashboard ─────────────────
+// ============================================================
+// LINK DA LOJA — exibe no topo do dashboard
+// ============================================================
 function _mostrarLinkLoja() {
   const slug = AUTH.slug();
   if (!slug) return;
 
-  // Monta URL da loja com base na URL atual
-  const base = window.location.origin + window.location.pathname.replace("admin.html","");
+  // Monta URL pública da loja baseada na URL atual
+  const base     = window.location.origin + window.location.pathname.replace("admin.html","");
   const linkLoja = `${base}index.html?slug=${slug}`;
 
-  // Remove se já existir
   document.getElementById("link-loja-banner")?.remove();
 
   const banner = document.createElement("div");
   banner.id = "link-loja-banner";
   banner.style.cssText = `
-    background: var(--surface, #1A1030);
-    border: 1px solid var(--primary, #5B2D8E);
-    border-radius: 12px;
-    padding: 14px 20px;
-    margin-bottom: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 10px;
+    background:var(--surface,#1A1030);border:1px solid var(--primary,#5B2D8E);
+    border-radius:12px;padding:14px 20px;margin-bottom:20px;
+    display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;
   `;
   banner.innerHTML = `
     <div>
-      <div style="font-size:13px;color:var(--text-muted,#aaa);margin-bottom:4px;">🔗 Link da sua loja (envie para seus clientes)</div>
-      <div style="font-size:14px;font-weight:600;word-break:break-all;" id="link-loja-texto">${linkLoja}</div>
+      <div style="font-size:13px;color:var(--text-muted,#aaa);margin-bottom:4px;">🔗 Link da sua loja — envie para seus clientes</div>
+      <div style="font-size:14px;font-weight:600;word-break:break-all;">${linkLoja}</div>
     </div>
-    <button onclick="navigator.clipboard.writeText('${linkLoja}').then(()=>MODAL.toast('Link copiado! 📋'))"
-      style="background:var(--primary,#5B2D8E);color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;white-space:nowrap;">
-      📋 Copiar Link
-    </button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button onclick="navigator.clipboard.writeText('${linkLoja}').then(()=>MODAL.toast('Link copiado! 📋'))"
+        style="background:var(--primary,#5B2D8E);color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;">
+        📋 Copiar Link
+      </button>
+    </div>
   `;
 
-  // Insere no topo do dashboard
   const dashboard = document.getElementById("sec-dashboard");
   if (dashboard) {
     const titulo = dashboard.querySelector("h2");
@@ -129,13 +217,17 @@ function _mostrarLinkLoja() {
   }
 }
 
-// ── Intercepta STORAGE para salvar no MongoDB ────────────────
+// ============================================================
+// PATCH NO STORAGE — intercepta para salvar no MongoDB
+// ============================================================
 function _patchStorage() {
-  // Salvar no MongoDB em vez do localStorage
+  // Neutraliza saves locais — tudo vai para o MongoDB
   STORAGE.salvarProdutos     = async () => {};
   STORAGE.salvarCategorias   = async () => {};
   STORAGE.salvarComplementos = async () => {};
   STORAGE.salvarPedidos      = async () => {};
+
+  // Config salva no banco ao chamar salvarConfig
   STORAGE.salvarConfig = async () => {
     try {
       await API_CONFIG.salvar({
@@ -147,7 +239,7 @@ function _patchStorage() {
     } catch(e) { console.error("Erro ao salvar config:", e.message); }
   };
 
-  // Patch PRODUTOS
+  // ── Patch PRODUTOS ────────────────────────────────────────
   const _pc = PRODUTOS.criar.bind(PRODUTOS);
   const _pe = PRODUTOS.editar.bind(PRODUTOS);
   const _px = PRODUTOS.excluir.bind(PRODUTOS);
@@ -157,7 +249,7 @@ function _patchStorage() {
   PRODUTOS.excluir = async (id)   => { _px(id);            try { await API_PRODUTOS.excluir(id); }  catch(e){console.error(e.message);} };
   PRODUTOS.pausar  = async (id)   => { _pp(id);            try { await API_PRODUTOS.pausar(id); }   catch(e){console.error(e.message);} };
 
-  // Patch CATEGORIAS
+  // ── Patch CATEGORIAS ──────────────────────────────────────
   const _cc = CATEGORIAS.criar.bind(CATEGORIAS);
   const _ce = CATEGORIAS.editar.bind(CATEGORIAS);
   const _cx = CATEGORIAS.excluir.bind(CATEGORIAS);
@@ -167,7 +259,7 @@ function _patchStorage() {
   CATEGORIAS.excluir = async (id)   => { _cx(id);            try { await API_CATEGORIAS.excluir(id); }  catch(e){console.error(e.message);} };
   CATEGORIAS.pausar  = async (id)   => { _cp(id);            try { await API_CATEGORIAS.pausar(id); }   catch(e){console.error(e.message);} };
 
-  // Patch COMPLEMENTOS
+  // ── Patch COMPLEMENTOS ────────────────────────────────────
   const _oc = COMPLEMENTOS.criar.bind(COMPLEMENTOS);
   const _oe = COMPLEMENTOS.editar.bind(COMPLEMENTOS);
   const _ox = COMPLEMENTOS.excluir.bind(COMPLEMENTOS);
@@ -176,48 +268,39 @@ function _patchStorage() {
   COMPLEMENTOS.editar  = async (id,d) => { _oe(id,d);          try { await API_COMPLEMENTOS.editar(id,d); } catch(e){console.error(e.message);} };
   COMPLEMENTOS.excluir = async (id)   => { _ox(id);            try { await API_COMPLEMENTOS.excluir(id); }  catch(e){console.error(e.message);} };
   COMPLEMENTOS.pausar  = async (id)   => { _op(id);            try { await API_COMPLEMENTOS.pausar(id); }   catch(e){console.error(e.message);} };
-
-  // Patch WPP.enviar — salva pedido no MongoDB
-  const _wpp = WPP.enviar.bind(WPP);
-  WPP.enviar = async (cliente, tipoEntrega, formaPagamento, endereco) => {
-    _wpp(cliente, tipoEntrega, formaPagamento, endereco);
-    const taxa  = tipoEntrega === "entrega" ? (CONFIG.delivery.taxaEntrega || 0) : 0;
-    const pedido = {
-      id: UTIL.id(),
-      status: "pendente",
-      tipoEntrega, formaPagamento,
-      endereco: endereco || "",
-      total: CARRINHO.total() + taxa,
-      subtotal: CARRINHO.total(),
-      taxaEntrega: taxa,
-      data: new Date().toISOString(),
-      cliente,
-      itens: STATE.get("carrinho"),
-    };
-    try { await API_PEDIDOS.criar(pedido); } catch(e) { console.error(e.message); }
-  };
 }
 
-// ── Carrega dados do painel após login ───────────────────────
+// ============================================================
+// CARREGA DADOS DO PAINEL (após login)
+// ============================================================
 async function _carregarDadosAdmin() {
   try {
-    const [produtos, categorias, complementos, pedidos, config] = await Promise.all([
+    const [produtos, categorias, complementos, pedidos, config, estoquesBases] = await Promise.all([
       API_PRODUTOS.listar(),
       API_CATEGORIAS.listar(),
       API_COMPLEMENTOS.listar(),
       API_PEDIDOS.listar(),
       API_CONFIG.carregar(),
+      API_ESTOQUE_BASE.listar(),
     ]);
-    STATE.set("produtos",     produtos     || []);
-    STATE.set("categorias",   categorias   || []);
-    STATE.set("complementos", complementos || []);
-    STATE.set("pedidos",      pedidos      || []);
+
+    // Popula o estado global com dados do MongoDB
+    STATE.set("produtos",      produtos      || []);
+    STATE.set("categorias",    categorias    || []);
+    STATE.set("complementos",  complementos  || []);
+    STATE.set("pedidos",       pedidos       || []);
+    STATE.set("estoquesBases", estoquesBases || []);
+
     _aplicarConfig(config);
     UTIL.aplicarCores();
     renderizarAdmin();
-    mostrarSecao("sec-dashboard");
+    mostrarSecao("sec-pedidos");
     if (typeof TABS !== "undefined") TABS.initAll();
     _mostrarLinkLoja();
+
+    // Inicia polling para receber pedidos em tempo real
+    _iniciarPolling();
+
     MODAL.toast("Bem-vindo ao painel! 👋");
     console.log("✅ Dados carregados do MongoDB!");
   } catch(e) {
@@ -226,7 +309,9 @@ async function _carregarDadosAdmin() {
   }
 }
 
-// ── LOGIN MULTI-TENANT ───────────────────────────────────────
+// ============================================================
+// LOGIN MULTI-TENANT
+// ============================================================
 async function fazerLogin() {
   const loginInput = document.getElementById("login-usuario");
   const senhaInput = document.getElementById("login-senha");
@@ -264,29 +349,35 @@ async function fazerLogin() {
 }
 window.fazerLogin = fazerLogin;
 
-// ── LOGOUT ───────────────────────────────────────────────────
+// ============================================================
+// LOGOUT
+// ============================================================
 function fazerLogout() {
+  _pararPolling(); // para o polling ao sair
   AUTH.limpar();
   STATE.set("adminLogado", false);
   document.getElementById("login-overlay")?.classList.add("active");
-  const s = document.getElementById("login-senha");
-  const u = document.getElementById("login-usuario");
-  if (s) s.value = "";
-  if (u) u.value = "";
+  ["login-senha","login-usuario"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
   const erroEl = document.getElementById("login-erro");
   if (erroEl) erroEl.style.display = "none";
   document.getElementById("link-loja-banner")?.remove();
 }
 window.fazerLogout = fazerLogout;
 
-// ── INIT ─────────────────────────────────────────────────────
+// ============================================================
+// INICIALIZAÇÃO — detecta se é painel admin ou loja pública
+// ============================================================
 document.addEventListener("DOMContentLoaded", async () => {
   const isAdmin = document.body.classList.contains("pagina-admin");
 
+  // ── PAINEL ADMIN ──────────────────────────────────────────
   if (isAdmin) {
-    _patchStorage();
+    _patchStorage(); // intercepta salvamentos para o MongoDB
 
-    // Sessão ativa — entra direto sem pedir login
+    // Se já possui sessão ativa, carrega o painel direto
     if (AUTH.logado()) {
       STATE.set("adminLogado", true);
       document.getElementById("login-overlay")?.classList.remove("active");
@@ -297,12 +388,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
-  // ── LOJA PÚBLICA ────────────────────────────────────────────
+  // ── LOJA PÚBLICA ──────────────────────────────────────────
+  // Detecta o slug pela URL: /loja/SLUG ou ?slug=SLUG
   const match  = window.location.pathname.match(/\/loja\/([^/?#]+)/);
   const params = new URLSearchParams(window.location.search);
   const slug   = match?.[1] || params.get("slug") || AUTH.slug();
 
-  // Mostra botão "⚙️ Admin" se o admin estiver logado na sessão
+  // Mostra botão "Voltar ao Admin" se o admin estiver logado
   if (AUTH.logado()) {
     const btnAdmin = document.getElementById("btn-voltar-admin");
     if (btnAdmin) btnAdmin.style.display = "inline-flex";
@@ -310,6 +402,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (slug) {
     try {
+      // Carrega dados públicos da loja pelo slug
       const loja = await API_LOJA.carregar(slug);
       STATE.set("produtos",     loja.produtos   || []);
       STATE.set("categorias",   loja.categorias || []);
@@ -318,6 +411,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       _aplicarConfig(loja.config);
       UTIL.aplicarCores();
       if (typeof renderizarCatalogo === "function") renderizarCatalogo();
+
+      // Aplica configurações de entrega/retirada
       const opcEntrega  = document.getElementById("opc-entrega");
       const opcRetirada = document.getElementById("opc-retirada");
       if (!CONFIG.delivery.entregaAtiva  && opcEntrega)  opcEntrega.style.display  = "none";
@@ -325,5 +420,46 @@ document.addEventListener("DOMContentLoaded", async () => {
     } catch(e) {
       console.error("Erro ao carregar loja:", e.message);
     }
+
+    // Intercepta WPP.enviar para salvar pedido no MongoDB via rota pública
+    // Aguarda o app.js terminar de definir WPP antes de interceptar
+    setTimeout(() => {
+      if (typeof WPP === "undefined" || typeof WPP.enviar !== "function") return;
+
+      const _wppOriginal = WPP.enviar.bind(WPP);
+      WPP.enviar = async (cliente, tipoEntrega, formaPagamento, endereco) => {
+        // ✅ FIX: captura itens e total ANTES de WPP.enviar limpar o carrinho
+        const itensPedido = (STATE.get("carrinho") || []).map(i => ({ ...i }));
+        const subtotalPedido = CARRINHO.total();
+        const taxa = tipoEntrega === "entrega" ? (CONFIG.delivery?.taxaEntrega || 0) : 0;
+        const totalPedido = subtotalPedido + taxa;
+
+        // Executa o comportamento original (abre WhatsApp + limpa carrinho)
+        _wppOriginal(cliente, tipoEntrega, formaPagamento, endereco);
+
+        // Monta o pedido para salvar no MongoDB com dados já capturados
+        const pedido = {
+          id:             typeof UTIL !== "undefined" ? UTIL.id() : Date.now().toString(36),
+          status:         "pendente",
+          tipoEntrega,
+          formaPagamento,
+          endereco:       endereco || "",
+          total:          totalPedido,
+          subtotal:       subtotalPedido,
+          taxaEntrega:    taxa,
+          data:           new Date().toISOString(),
+          cliente,
+          itens:          itensPedido,
+        };
+
+        try {
+          // Usa rota pública — não precisa de token do admin
+          await API_PEDIDOS.criarPublico(slug, pedido);
+          console.log("✅ Pedido salvo no MongoDB!");
+        } catch(e) {
+          console.error("[Pedido] Erro ao salvar:", e.message);
+        }
+      };
+    }, 500); // aguarda 500ms para garantir que WPP já foi definido pelo app.js
   }
 });

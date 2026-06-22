@@ -345,6 +345,9 @@ const CARRINHO = {
       tamanho: tamanho || "",
       complementos: complementosSelecionados || [],
       observacao: observacao || "",
+      // Para Estoque-Base: usa o tamanho selecionado (ex: "400ML") se disponível,
+      // senão usa a unidade base do produto (ex: "kg", "L")
+      unidade: tamanho || produto.unidade || "un",
     };
     STATE.update("carrinho", c => [...c, item]);
     STORAGE.salvarCarrinho();
@@ -549,9 +552,17 @@ const PRODUTOS = {
     });
   },
   comEstoqueBaixo(limite = 5) {
-    return STATE.get("produtos").filter(p =>
-      p.estoque !== "" && p.estoque !== undefined && Number(p.estoque) <= limite && Number(p.estoque) >= 0
-    );
+    const estoquesBases = STATE.get("estoquesBases") || [];
+    return STATE.get("produtos").filter(p => {
+      // Produto com Estoque-Base: verifica quantidade do base (limite: 1 kg/L)
+      if (p.usaEstoqueBase && p.estoqueBaseId) {
+        const base = estoquesBases.find(e => e.id === p.estoqueBaseId);
+        return base && base.quantidade <= 1;
+      }
+      // Produto por unidade: comportamento original inalterado
+      return p.estoque !== "" && p.estoque !== undefined &&
+             Number(p.estoque) <= limite && Number(p.estoque) >= 0;
+    });
   },
   vencendo() {
     const hoje = UTIL.hoje();
@@ -704,13 +715,103 @@ const DASHBOARD = {
   renderizarAlertas() {
     const el = document.getElementById("lista-estoque-baixo");
     if (!el) return;
-    const lista = PRODUTOS.comEstoqueBaixo(5);
-    el.innerHTML = lista.length
-      ? lista.map(p => `<div class="alerta-item">
+
+    const lista         = PRODUTOS.comEstoqueBaixo(5);
+    const estoquesBases = STATE.get("estoquesBases") || [];
+
+    // Produtos por unidade com estoque baixo
+    const alertasUnidade = lista.filter(p => !p.usaEstoqueBase);
+
+    // Produtos por peso com estoque-base baixo
+    const alertasPeso = lista.filter(p => p.usaEstoqueBase && p.estoqueBaseId);
+
+    // Estoques-base baixos sem produto duplicado na lista
+    const basesAlerta = estoquesBases.filter(base =>
+      base.quantidade <= 1 && !lista.some(p => p.estoqueBaseId === base.id)
+    );
+
+    // Monta HTML do card estoque baixo
+    const itensHtml = [
+      ...alertasUnidade.map(p => `
+        <div class="alerta-item">
           <span>⚠️ ${UTIL.sanitize(p.nome)}</span>
           <span class="badge-danger">${p.estoque} ${p.unidade || "un"}</span>
-        </div>`).join("")
+        </div>`),
+      ...alertasPeso.map(p => {
+        const base = estoquesBases.find(e => e.id === p.estoqueBaseId);
+        return `<div class="alerta-item">
+          <span>⚠️ ${UTIL.sanitize(p.nome)} <small>(Base: ${base?.nome || "?"})</small></span>
+          <span class="badge-danger">${base ? base.quantidade.toFixed(2) + " " + base.unidade : "baixo"}</span>
+        </div>`;
+      }),
+      ...basesAlerta.map(base => `
+        <div class="alerta-item">
+          <span>⚖️ ${UTIL.sanitize(base.nome)} (Estoque-Base)</span>
+          <span class="badge-danger">${base.quantidade.toFixed(2)} ${base.unidade}</span>
+        </div>`),
+    ];
+
+    el.innerHTML = itensHtml.length
+      ? itensHtml.join("")
       : `<p class="sem-dados">Nenhum alerta de estoque.</p>`;
+
+    // ── Contagem total de alertas ─────────────────────────────
+    // Contabiliza: unidade + peso + bases sem produto = total real
+    const totalUnidade = alertasUnidade.length;
+    const totalBase    = alertasPeso.length + basesAlerta.length;
+    const totalAlertas = itensHtml.length; // total correto
+
+    // ── Remove badge do menu lateral (não queremos lá) ────────
+    const navEstoque = document.querySelector('[data-sec="sec-complementos"]');
+    if (navEstoque) {
+      const badgeAntigo = navEstoque.querySelector(".nav-badge");
+      if (badgeAntigo) badgeAntigo.remove();
+    }
+
+    // ── Badge na aba interna "Controle de Estoque" ───────────
+    // Mostra contagem de produtos por unidade com estoque baixo
+    const btnControle = document.querySelector('[data-tab="tab-controle-estoque"]');
+    if (btnControle) {
+      let b = btnControle.querySelector(".tab-badge");
+      if (!b) {
+        b = document.createElement("span");
+        b.className = "tab-badge";
+        b.style.cssText = "background:#e55;color:#fff;border-radius:10px;font-size:10px;padding:1px 6px;margin-left:5px;font-weight:700;";
+        btnControle.appendChild(b);
+      }
+      b.textContent   = totalUnidade > 0 ? totalUnidade : "";
+      b.style.display = totalUnidade > 0 ? "inline" : "none";
+    }
+
+    // ── Badge na aba interna "Estoque-Base" ──────────────────
+    // Mostra contagem de estoques-base baixos
+    const btnBase = document.querySelector('[data-tab="tab-estoque-base"]');
+    if (btnBase) {
+      let b = btnBase.querySelector(".tab-badge");
+      if (!b) {
+        b = document.createElement("span");
+        b.className = "tab-badge";
+        b.style.cssText = "background:#e55;color:#fff;border-radius:10px;font-size:10px;padding:1px 6px;margin-left:5px;font-weight:700;";
+        btnBase.appendChild(b);
+      }
+      b.textContent   = totalBase > 0 ? totalBase : "";
+      b.style.display = totalBase > 0 ? "inline" : "none";
+    }
+
+    // ── Atualiza o card "Estoque Baixo" no dashboard ─────────
+    // Mostra a contagem total correta (unidade + base)
+    const cardEstoque = document.getElementById("dash-resumo-estoque");
+    if (cardEstoque) {
+      const total = STATE.get("produtos").length;
+      cardEstoque.innerHTML = `
+        <div class="dash-stat" style="cursor:pointer;" onclick="mostrarSecao('sec-produtos');TABS.ir('sec-produtos','tab-produtos-lista')" title="Ver produtos cadastrados">
+          <span>${total}</span><small>Total Produtos</small>
+        </div>
+        <div class="dash-stat" style="cursor:pointer;" onclick="mostrarSecao('sec-complementos');TABS.ir('sec-complementos','tab-controle-estoque')" title="Ver estoque">
+          <span style="color:var(--warning)">${totalAlertas}</span>
+          <small>Estoque Baixo</small>
+        </div>`;
+    }
 
     const venc = document.getElementById("lista-vencendo");
     if (venc) {
@@ -741,8 +842,12 @@ const DASHBOARD = {
     const total = STATE.get("produtos").length;
     const baixo = PRODUTOS.comEstoqueBaixo(5).length;
     el.innerHTML = `
-      <div class="dash-stat"><span>${total}</span><small>Total Produtos</small></div>
-      <div class="dash-stat"><span style="color:var(--warning)">${baixo}</span><small>Estoque Baixo</small></div>
+      <div class="dash-stat" style="cursor:pointer;" onclick="mostrarSecao('sec-produtos');TABS.ir('sec-produtos','tab-produtos-lista')" title="Ver produtos cadastrados">
+        <span>${total}</span><small>Total Produtos</small>
+      </div>
+      <div class="dash-stat" style="cursor:pointer;" onclick="mostrarSecao('sec-complementos');TABS.ir('sec-complementos','tab-controle-estoque')" title="Ver estoque">
+        <span style="color:var(--warning)">${baixo}</span><small>Estoque Baixo</small>
+      </div>
     `;
   },
 };
@@ -753,7 +858,7 @@ STATE.on("pedidos", () => {
     DASHBOARD.atualizar();
   }
   // Atualizar aba de pedidos se estiver visível
-  const pane = document.getElementById("tab-pedidos-recebidos") || document.getElementById("tab-historico-pedidos");
+  const pane = document.getElementById("tab-pedidos-recebidos");
   if (pane?.classList.contains("ativo")) renderizarAdmPedidos();
 });
 
@@ -841,7 +946,7 @@ function abrirModalProduto(produtoId) {
       <div class="pm-body">
         <h2>${UTIL.sanitize(produto.nome)}</h2>
         <p class="pm-desc">${UTIL.sanitize(produto.descricao || "")}</p>
-        <div class="pm-preco">${UTIL.formatarMoeda(produto.preco)}<small>/${produto.unidade || "un"}</small></div>
+        <div class="pm-preco">${UTIL.formatarMoeda(produto.preco)}</div>
         ${tamanhos.length ? `<div class="pm-secao"><label>Tamanho:</label><div class="pm-tamanhos">${tamanhos.map(t => `<label class="tag-radio"><input type="radio" name="pm-tamanho" value="${t}"><span>${t}</span></label>`).join("")}</div></div>` : ""}
         ${complementosDisponiveis.length ? `<div class="pm-secao"><label>Complementos:</label><div class="pm-complementos">${complementosDisponiveis.map(c => `<label class="tag-check"><input type="checkbox" name="pm-comp" value="${c.id}" data-nome="${c.nome}" data-preco="${c.preco || 0}"><span>${c.nome}${c.preco ? ` (+${UTIL.formatarMoeda(c.preco)})` : ""}</span></label>`).join("")}</div></div>` : ""}
         <div class="pm-secao"><label>Observação:</label><textarea id="pm-obs" placeholder="Ex: sem açúcar..." rows="2"></textarea></div>
@@ -882,8 +987,134 @@ window.pmAdicionarCarrinho = pmAdicionarCarrinho;
 // ============================================================
 // RENDERIZAÇÃO DO CATÁLOGO
 // ============================================================
+// ============================================================
+// VERIFICAÇÃO DE HORÁRIO E STATUS DA LOJA
+// ============================================================
+function _lojaAbertaPorHorario() {
+  const horarios = CONFIG.funcionamento?.horarios || [];
+  if (!horarios.length) return true; // sem horários cadastrados = sempre aberta
+
+  const agora  = new Date();
+  const diaSem = agora.getDay(); // 0=Dom … 6=Sáb
+  const hhmm   = agora.getHours() * 60 + agora.getMinutes();
+
+  const diasPT = ["domingo","segunda","terça","quarta","quinta","sexta","sábado"];
+  const diaAtual = diasPT[diaSem];
+
+  for (const h of horarios) {
+    const diaStr = (h.dia || "").toLowerCase();
+
+    // Verifica se o dia atual é coberto por este horário
+    const cobre =
+      diaStr.includes(diaAtual) ||
+      (diaStr.includes("seg") && diaStr.includes("sex") && diaSem >= 1 && diaSem <= 5) ||
+      (diaStr.includes("seg") && diaStr.includes("sáb") && diaSem >= 1 && diaSem <= 6) ||
+      (diaStr.includes("seg") && diaStr.includes("dom") && diaSem >= 0 && diaSem <= 6) ||
+      diaStr === "todos os dias" || diaStr === "todos";
+
+    if (!cobre) continue;
+
+    // Extrai horários de abertura e fechamento do formato "HH:MM – HH:MM" ou "HH:MM - HH:MM"
+    const match = (h.hora || "").match(/(\d{1,2}):(\d{2})\s*[–-]\s*(\d{1,2}):(\d{2})/);
+    if (!match) continue;
+    const abertura  = parseInt(match[1]) * 60 + parseInt(match[2]);
+    const fechamento = parseInt(match[3]) * 60 + parseInt(match[4]);
+    if (hhmm >= abertura && hhmm <= fechamento) return true;
+  }
+  return false;
+}
+
+function _verificarStatusLoja() {
+  // Remove banner anterior se existir
+  document.getElementById("banner-loja-fechada")?.remove();
+
+  const manualAberta = CONFIG.funcionamento?.aberto !== false; // default true
+  const horarioAberta = _lojaAbertaPorHorario();
+  const lojaAberta = manualAberta && horarioAberta;
+
+  if (lojaAberta) return; // loja aberta, nada a fazer
+
+  // Determina mensagem
+  let msg;
+  if (!manualAberta) {
+    msg = "🌙 Estamos fora do ar por agora, mas logo voltamos com tudo! Obrigado pela sua preferência. 💜";
+  } else {
+    // Fechado por horário
+    const prox = _proximoHorarioAbertura();
+    msg = prox
+      ? `⏰ Nossa loja está fechada no momento. Voltamos ${prox}. Até logo! 🛍️`
+      : "🌙 Nossa loja está fechada no momento. Em breve abriremos novamente. Fique de olho! 💜";
+  }
+
+  // Cria banner de loja fechada
+  const banner = document.createElement("div");
+  banner.id = "banner-loja-fechada";
+  banner.style.cssText = `
+    position:fixed;inset:0;z-index:9998;
+    background:rgba(10,5,20,.96);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:32px 24px;
+  `;
+  banner.innerHTML = `
+    <div style="font-size:64px;margin-bottom:16px;">🔒</div>
+    <div style="font-size:22px;font-weight:800;color:var(--primary,#5B2D8E);margin-bottom:12px;">${CONFIG.loja.nome || "Nossa Loja"}</div>
+    <div style="font-size:16px;color:#ccc;max-width:440px;line-height:1.6;">${msg}</div>
+    ${(CONFIG.funcionamento?.horarios || []).length
+      ? `<div style="margin-top:24px;background:rgba(91,45,142,.15);border-radius:12px;padding:16px 24px;max-width:360px;">
+           <div style="font-size:13px;font-weight:700;color:var(--primary,#5B2D8E);margin-bottom:10px;">🕐 Horários de Funcionamento</div>
+           ${(CONFIG.funcionamento.horarios).map(h =>
+             `<div style="display:flex;justify-content:space-between;gap:20px;font-size:13px;color:#ccc;padding:4px 0;">
+               <span>${h.dia}</span><span style="font-weight:600;color:#fff;">${h.hora}</span>
+             </div>`).join("")}
+         </div>`
+      : ""}
+  `;
+  document.body.appendChild(banner);
+
+  // Bloqueia botões de adicionar ao carrinho
+  document.querySelectorAll(".btn-add, .pm-add, #btn-finalizar").forEach(btn => {
+    btn.disabled = true;
+    btn.style.opacity = "0.4";
+    btn.style.cursor = "not-allowed";
+  });
+}
+
+function _proximoHorarioAbertura() {
+  const horarios = CONFIG.funcionamento?.horarios || [];
+  if (!horarios.length) return null;
+  // Tenta encontrar o próximo horário de abertura hoje ou nos próximos dias
+  const diasPT = ["domingo","segunda","terça","quarta","quinta","sexta","sábado"];
+  const agora = new Date();
+  for (let d = 0; d < 7; d++) {
+    const dia = new Date(agora);
+    dia.setDate(dia.getDate() + d);
+    const diaSem = dia.getDay();
+    const diaAtual = diasPT[diaSem];
+    for (const h of horarios) {
+      const diaStr = (h.dia || "").toLowerCase();
+      const cobre =
+        diaStr.includes(diaAtual) ||
+        (diaStr.includes("seg") && diaStr.includes("sex") && diaSem >= 1 && diaSem <= 5) ||
+        (diaStr.includes("seg") && diaStr.includes("sáb") && diaSem >= 1 && diaSem <= 6) ||
+        diaStr === "todos os dias" || diaStr === "todos";
+      if (!cobre) continue;
+      const match = (h.hora || "").match(/(\d{1,2}):(\d{2})/);
+      if (!match) continue;
+      if (d === 0) {
+        const abMin = parseInt(match[1]) * 60 + parseInt(match[2]);
+        const agoraMin = agora.getHours() * 60 + agora.getMinutes();
+        if (abMin <= agoraMin) continue; // já passou
+        return `às ${match[1]}:${match[2]}`;
+      }
+      return `${diaAtual === "segunda" ? "na segunda-feira" : `em ${diaAtual}`} às ${match[1]}:${match[2]}`;
+    }
+  }
+  return null;
+}
+
 function renderizarCatalogo() {
   aplicarConfigUI();
+  _verificarStatusLoja();
   renderizarCategorias();
   renderizarProdutos();
   CARRINHO.atualizarUI();
@@ -971,7 +1202,7 @@ function cardProduto(p) {
       <h3>${UTIL.sanitize(p.nome)}</h3>
       ${p.descricao ? `<p>${UTIL.sanitize(p.descricao)}</p>` : ""}
       <div class="pc-footer">
-        <span class="pc-preco">${UTIL.formatarMoeda(p.preco)}<small>/${p.unidade || "un"}</small></span>
+        <span class="pc-preco">${UTIL.formatarMoeda(p.preco)}</span>
         <button class="btn-add" onclick="event.stopPropagation();abrirModalProduto('${p.id}')">+</button>
       </div>
     </div>
@@ -998,16 +1229,19 @@ function renderizarAdmin() {
 function renderizarAdmProdutos() {
   const container = document.getElementById("adm-produtos-lista");
   if (!container) return;
-  const lista = STATE.get("produtos");
+  const lista = [...STATE.get("produtos")].sort((a, b) => (b.vendas || 0) - (a.vendas || 0));
   if (lista.length === 0) {
     container.innerHTML = `<p class="sem-dados">Nenhum produto cadastrado.</p>`;
     return;
   }
-  container.innerHTML = lista.map(p => `
+  container.innerHTML = lista.map((p, i) => `
     <div class="adm-item ${p.ativo ? "" : "pausado"}">
-      <div class="adm-item-img">${p.imagem
-        ? `<img src="${UTIL.sanitize(p.imagem)}" alt="">`
-        : `<span>${p.emoji || "🛍️"}</span>`}</div>
+      <div class="adm-item-img" style="position:relative;">
+        ${p.imagem
+          ? `<img src="${UTIL.sanitize(p.imagem)}" alt="">`
+          : `<span>${p.emoji || "🛍️"}</span>`}
+        <span style="position:absolute;top:-6px;left:-6px;background:var(--primary,#5B2D8E);color:#fff;border-radius:50%;width:22px;height:22px;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;">${i + 1}°</span>
+      </div>
       <div class="adm-item-info">
         <strong>${UTIL.sanitize(p.nome)}</strong>
         <small>${UTIL.formatarMoeda(p.preco)} / ${p.unidade || "un"} | Estoque: ${p.estoque ?? "∞"} | Vendas: ${p.vendas || 0}</small>
@@ -1055,6 +1289,8 @@ function renderizarControleEstoque() {
   const container = document.getElementById("tab-controle-estoque");
   if (!container) return;
   const lista = STATE.get("produtos");
+  const estoquesBases = STATE.get("estoquesBases") || [];
+
   if (lista.length === 0) {
     container.innerHTML = `<p class="sem-dados">Nenhum produto cadastrado.</p>`;
     return;
@@ -1063,22 +1299,48 @@ function renderizarControleEstoque() {
     <div class="form-card">
       <div class="form-card-titulo">📦 Controle de Estoque</div>
       <div id="estoque-lista">
-        ${lista.map(p => `
-          <div class="adm-item">
-            <div class="adm-item-img">${p.imagem ? `<img src="${UTIL.sanitize(p.imagem)}" alt="">` : `<span>${p.emoji || "🛍️"}</span>`}</div>
-            <div class="adm-item-info">
-              <strong>${UTIL.sanitize(p.nome)}</strong>
-              <small>Estoque atual: <strong>${p.estoque ?? "∞"}</strong> ${p.unidade || "un"} | Vendas: ${p.vendas || 0}</small>
-              ${(p.estoque !== undefined && p.estoque !== "" && Number(p.estoque) <= 5)
-                ? `<span class="badge-danger">⚠️ Estoque Baixo</span>` : ""}
-            </div>
-            <div class="adm-item-acoes" style="align-items:center; gap:8px;">
-              <input type="number" min="0" value="${p.estoque ?? ''}" placeholder="∞"
-                style="width:80px; text-align:center;"
-                onchange="atualizarEstoque('${p.id}', this.value)">
-              <span style="font-size:12px; color:var(--text-muted)">${p.unidade || "un"}</span>
-            </div>
-          </div>`).join("")}
+        ${lista.map(p => {
+          // Produto com Estoque-Base: mostra dados do base vinculado
+          if (p.usaEstoqueBase && p.estoqueBaseId) {
+            const base = estoquesBases.find(e => e.id === p.estoqueBaseId);
+            const qtdBase   = base ? base.quantidade.toFixed(3) : "?";
+            const unBase    = base ? base.unidade : "";
+            const nomeBase  = base ? base.nome : "Base não encontrado";
+            const alertaBaixo = base && base.quantidade <= 1
+              ? `<span class="badge-danger">⚠️ Estoque Baixo</span>` : "";
+            return `
+              <div class="adm-item">
+                <div class="adm-item-img">${p.imagem ? `<img src="${UTIL.sanitize(p.imagem)}" alt="">` : `<span>${p.emoji || "🛍️"}</span>`}</div>
+                <div class="adm-item-info">
+                  <strong>${UTIL.sanitize(p.nome)}</strong>
+                  <small>⚖️ Estoque-Base: <strong>${nomeBase}</strong> — <strong>${qtdBase} ${unBase}</strong> disponível | Vendas: ${p.vendas || 0}</small>
+                  <small style="color:var(--text-muted)">Desconta do Estoque-Base conforme o tamanho selecionado na venda (ex: 400ml, 700ml, 1L)</small>
+                  ${alertaBaixo}
+                </div>
+                <div class="adm-item-acoes" style="align-items:center;gap:8px;">
+                  <span style="font-size:12px;color:var(--text-muted);">Gerenciar em ⚖️ Estoque-Base</span>
+                </div>
+              </div>`;
+          }
+          // Produto por unidade: comportamento original inalterado
+          const alertaBaixo = (p.estoque !== undefined && p.estoque !== "" && Number(p.estoque) <= 5)
+            ? `<span class="badge-danger">⚠️ Estoque Baixo</span>` : "";
+          return `
+            <div class="adm-item">
+              <div class="adm-item-img">${p.imagem ? `<img src="${UTIL.sanitize(p.imagem)}" alt="">` : `<span>${p.emoji || "🛍️"}</span>`}</div>
+              <div class="adm-item-info">
+                <strong>${UTIL.sanitize(p.nome)}</strong>
+                <small>Estoque atual: <strong>${p.estoque ?? "∞"}</strong> ${p.unidade || "un"} | Vendas: ${p.vendas || 0}</small>
+                ${alertaBaixo}
+              </div>
+              <div class="adm-item-acoes" style="align-items:center; gap:8px;">
+                <input type="number" min="0" value="${p.estoque ?? ""}" placeholder="∞"
+                  style="width:80px; text-align:center;"
+                  onchange="atualizarEstoque('${p.id}', this.value)">
+                <span style="font-size:12px; color:var(--text-muted)">${p.unidade || "un"}</span>
+              </div>
+            </div>`;
+        }).join("")}
       </div>
     </div>`;
 }
@@ -1206,62 +1468,310 @@ window.editarComplemento = editarComplemento;
 
 // ADMIN — Pedidos
 function renderizarAdmPedidos() {
-  // Pedidos Recebidos (pendentes/ativos)
   const activeContainer = document.getElementById("pedidos-recebidos-lista");
-  // Histórico (todos)
-  const histContainer = document.getElementById("pedidos-historico-lista");
+  const pedidos  = [...STATE.get("pedidos")].reverse();
 
-  const pedidos = [...STATE.get("pedidos")].reverse();
-  const ativos = pedidos.filter(p => p.status !== ENUMS.STATUS_PEDIDO.CANCELADO && p.status !== ENUMS.STATUS_PEDIDO.ENTREGUE);
-  const historico = pedidos;
+  // ── Renderiza um card de pedido ──────────────────────────
+  const renderPedido = (p) => {
+    const corBadge = p.status === "cancelado" ? "danger"
+      : p.status === "entregue" || p.status === "pago" ? "success"
+      : "warning";
 
-  const renderPedido = (p, showStatus = false) => `
+    const btnPago = (p.status !== "pago" && p.status !== "entregue" && p.status !== "cancelado")
+      ? `<button class="btn btn-outline btn-sm" style="color:#4caf50;border-color:#4caf50;font-size:11px;"
+           title="Marcar como pago"
+           onclick="marcarPedidoPago('${p.id}')">✅ Pago</button>`
+      : "";
+
+    return `
     <div class="pedido-card">
       <div class="pedido-header">
         <div>
           <strong>${UTIL.sanitize(p.cliente?.nome || "—")}</strong>
           <small style="color:var(--text-muted); display:block;">${UTIL.formatarData(p.data)}</small>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span class="badge-${p.status === 'cancelado' ? 'danger' : p.status === 'entregue' ? 'success' : 'warning'}">${p.status}</span>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <span class="badge-${corBadge}">${p.status}</span>
+          ${btnPago}
+          <button class="btn-icon" title="Editar pedido"
+            onclick="editarPedido('${p.id}')">✏️</button>
           <button class="btn-icon btn-icon-del" title="Excluir pedido e estornar estoque"
             onclick="confirmarExcluirPedido('${p.id}')">🗑️</button>
         </div>
       </div>
       <div class="pedido-itens">
-        ${(p.itens || []).map(i => `<small>• ${i.quantidade}x ${UTIL.sanitize(i.nome)}${i.tamanho ? ` (${i.tamanho})` : ""}</small>`).join("")}
+        ${(p.itens || []).map(i =>
+          `<small>• ${i.quantidade}x ${UTIL.sanitize(i.nome)}${i.tamanho ? ` (${i.tamanho})` : ""}</small>`
+        ).join("")}
       </div>
       <div class="pedido-footer">
         <span>${p.tipoEntrega === "entrega" ? "🚚 Entrega" : "🏪 Retirada"} | ${p.formaPagamento || "—"}</span>
         <strong>${UTIL.formatarMoeda(p.total)}</strong>
       </div>
-      ${p.tipoEntrega === "entrega" && p.endereco ? `<div style="font-size:12px;color:var(--text-muted);margin-top:6px;">📍 ${UTIL.sanitize(p.endereco)}</div>` : ""}
+      ${p.tipoEntrega === "entrega" && p.endereco
+        ? `<div style="font-size:12px;color:var(--text-muted);margin-top:6px;">📍 ${UTIL.sanitize(p.endereco)}</div>`
+        : ""}
     </div>`;
+  };
 
   if (activeContainer) {
-    activeContainer.innerHTML = ativos.length
-      ? ativos.map(p => renderPedido(p)).join("")
+    activeContainer.innerHTML = pedidos.length
+      ? pedidos.map(p => renderPedido(p)).join("")
       : `<p class="sem-dados">Nenhum pedido recebido.</p>`;
-  }
-
-  if (histContainer) {
-    histContainer.innerHTML = historico.length
-      ? historico.map(p => renderPedido(p, true)).join("")
-      : `<p class="sem-dados">Nenhum pedido no histórico.</p>`;
   }
 }
 
 function confirmarExcluirPedido(id) {
   MODAL.pedirSenha("Excluir Pedido", () => {
-    MODAL.confirmar("Excluir este pedido? O estoque será revertido automaticamente e o faturamento será atualizado.", () => {
-      PEDIDOS.excluir(id);
-      renderizarAdmPedidos();
-      DASHBOARD.atualizar();
-      MODAL.toast(ENUMS.MSGS.PEDIDO_EXCLUIDO, "sucesso");
+    MODAL.confirmar("Excluir este pedido? O estoque será revertido automaticamente e o faturamento será atualizado.", async () => {
+      try {
+        await API_PEDIDOS.excluir(id);
+        STATE.update("pedidos", lista => lista.filter(p => p.id !== id));
+        // Recarrega produtos para refletir estorno de estoque e vendas
+        const [produtosAtualizados, estoquesBases] = await Promise.all([
+          API_PRODUTOS.listar(),
+          API_ESTOQUE_BASE.listar(),
+        ]);
+        STATE.set("produtos", produtosAtualizados || []);
+        STATE.set("estoquesBases", estoquesBases || []);
+        renderizarAdmPedidos();
+        renderizarAdmProdutos();
+        renderizarControleEstoque();
+        DASHBOARD.atualizar();
+        MODAL.toast(ENUMS.MSGS.PEDIDO_EXCLUIDO, "sucesso");
+      } catch(e) {
+        MODAL.erro("Erro ao excluir pedido: " + e.message);
+      }
     });
   });
 }
 window.confirmarExcluirPedido = confirmarExcluirPedido;
+
+// ── Marca pedido como Pago ────────────────────────────────────
+// Altera o status do pedido para "pago" sem excluir nem estornar estoque
+async function marcarPedidoPago(id) {
+  try {
+    // Atualiza no MongoDB via API
+    const pedidoAtualizado = await API_PEDIDOS.atualizarStatus(id, "pago");
+    // Atualiza no estado local
+    STATE.update("pedidos", lista =>
+      lista.map(p => p.id === id ? { ...p, status: "pago" } : p)
+    );
+    renderizarAdmPedidos();
+    DASHBOARD.atualizar();
+    MODAL.toast("Pedido marcado como pago! ✅");
+  } catch(e) {
+    MODAL.erro("Erro ao atualizar pedido: " + e.message);
+  }
+}
+window.marcarPedidoPago = marcarPedidoPago;
+
+// ── Editar Pedido ─────────────────────────────────────────────
+// Abre modal completo com edição de produtos, quantidades e status
+function editarPedido(id) {
+  const pedidos = STATE.get("pedidos");
+  const p = pedidos.find(x => x.id === id);
+  if (!p) return;
+
+  // Cópia dos itens para edição local
+  window._editandoPedidoId = id;
+  window._editandoItens = (p.itens || []).map(i => ({ ...i }));
+
+  _renderizarModalEditarPedido(p);
+}
+window.editarPedido = editarPedido;
+
+function _calcularTotaisEdicao(taxa) {
+  const itens = window._editandoItens || [];
+  const subtotal = itens.reduce((s, i) => s + (i.preco * i.quantidade), 0);
+  const total = subtotal + (taxa || 0);
+  return { subtotal, total };
+}
+
+function _renderizarModalEditarPedido(p) {
+  const taxa = p.taxaEntrega || 0;
+  const produtos = STATE.get("produtos").filter(x => x.ativo);
+  const categorias = STATE.get("categorias").filter(x => x.ativo);
+  const itens = window._editandoItens || [];
+
+  const { subtotal, total } = _calcularTotaisEdicao(taxa);
+
+  // Monta options agrupadas por categoria
+  const opcoesCategoria = categorias.map(cat => {
+    const prods = produtos.filter(pr => pr.categoria === cat.id);
+    if (!prods.length) return "";
+    return `<optgroup label="${cat.emoji || ""} ${UTIL.sanitize(cat.nome)}">
+      ${prods.map(pr => `<option value="${pr.id}" data-preco="${pr.preco}" data-nome="${UTIL.sanitize(pr.nome)}" data-unidade="${pr.unidade || "un"}">${UTIL.sanitize(pr.nome)} — ${UTIL.formatarMoeda(pr.preco)}/${pr.unidade || "un"}</option>`).join("")}
+    </optgroup>`;
+  }).join("");
+  const semCat = produtos.filter(pr => !categorias.find(c => c.id === pr.categoria));
+  const opcoesSemCat = semCat.length
+    ? `<optgroup label="Sem categoria">${semCat.map(pr => `<option value="${pr.id}" data-preco="${pr.preco}" data-unidade="${pr.unidade || "un"}">${UTIL.sanitize(pr.nome)} — ${UTIL.formatarMoeda(pr.preco)}</option>`).join("")}</optgroup>`
+    : "";
+
+  MODAL.abrir(`
+    <h3 style="margin:0 0 16px;">✏️ Editar Pedido — ${UTIL.sanitize(p.cliente?.nome || "")}</h3>
+
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+      <div class="form-grupo" style="flex:1;min-width:130px;">
+        <label>Status</label>
+        <select id="edit-ped-status">
+          ${["pendente","confirmado","preparando","saiu_entrega","entregue","pago","cancelado"]
+            .map(s => `<option value="${s}" ${p.status === s ? "selected" : ""}>${s}</option>`)
+            .join("")}
+        </select>
+      </div>
+      <div class="form-grupo" style="flex:1;min-width:130px;">
+        <label>Pagamento</label>
+        <input type="text" id="edit-ped-pagamento" value="${p.formaPagamento || ""}">
+      </div>
+      <div class="form-grupo" style="flex:2;min-width:200px;">
+        <label>Endereço</label>
+        <input type="text" id="edit-ped-endereco" value="${p.endereco || ""}">
+      </div>
+    </div>
+
+    <div style="font-weight:700;margin-bottom:8px;font-size:14px;">🛒 Produtos do Pedido</div>
+    <div id="edit-ped-itens" style="margin-bottom:14px;max-height:240px;overflow-y:auto;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:4px 8px;">
+      ${itens.length === 0 ? `<p style="color:#aaa;font-size:13px;padding:8px 0;">Nenhum item no pedido.</p>` :
+        itens.map((item, idx) => `
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+            <span style="flex:1;font-size:13px;">${UTIL.sanitize(item.nome)}</span>
+            <span style="font-size:11px;color:#aaa;white-space:nowrap;">${item.unidade || "un"} · ${UTIL.formatarMoeda(item.preco)}</span>
+            <input type="number" min="1" value="${item.quantidade}"
+              style="width:54px;text-align:center;padding:4px;border-radius:6px;background:var(--bg,#0F0A1A);border:1px solid #444;color:inherit;"
+              onchange="window._editarQtdItem(${idx}, this.value)">
+            <button onclick="window._removerItemPedido(${idx})"
+              style="background:none;border:none;color:#e55;cursor:pointer;font-size:16px;padding:0 4px;line-height:1;">✕</button>
+          </div>
+        `).join("")}
+    </div>
+
+    <div style="margin-bottom:14px;">
+      <label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">➕ Adicionar Produto</label>
+      <div style="display:flex;gap:8px;">
+        <select id="edit-ped-select-produto" style="flex:1;padding:8px;border-radius:8px;background:var(--bg,#0F0A1A);border:1px solid #444;color:inherit;font-size:13px;">
+          <option value="">Selecione um produto...</option>
+          ${opcoesCategoria}${opcoesSemCat}
+        </select>
+        <button onclick="window._adicionarItemPedido()"
+          style="background:var(--primary,#5B2D8E);color:#fff;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;white-space:nowrap;font-size:13px;">➕ Add</button>
+      </div>
+    </div>
+
+    <div style="background:rgba(91,45,142,.12);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:14px;">
+      <div style="display:flex;justify-content:space-between;color:#aaa;margin-bottom:4px;">
+        <span>Subtotal:</span><span id="edit-subtotal">${UTIL.formatarMoeda(subtotal)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;color:#aaa;margin-bottom:4px;">
+        <span>Taxa de entrega:</span><span>${UTIL.formatarMoeda(taxa)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-weight:800;font-size:15px;">
+        <span>Total:</span><span id="edit-total">${UTIL.formatarMoeda(total)}</span>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button class="btn btn-outline" onclick="MODAL.fechar()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarEdicaoPedido('${p.id}')">💾 Salvar Alterações</button>
+    </div>
+  `);
+}
+
+window._editarQtdItem = function(idx, valor) {
+  const qtd = parseInt(valor) || 1;
+  if (window._editandoItens[idx]) {
+    window._editandoItens[idx].quantidade = Math.max(1, qtd);
+    _atualizarTotaisModalEdicao();
+  }
+};
+
+window._removerItemPedido = function(idx) {
+  window._editandoItens.splice(idx, 1);
+  const p = STATE.get("pedidos").find(x => x.id === window._editandoPedidoId);
+  if (p) _renderizarModalEditarPedido(p);
+};
+
+window._adicionarItemPedido = function() {
+  const sel = document.getElementById("edit-ped-select-produto");
+  const opt = sel?.options[sel.selectedIndex];
+  if (!opt?.value) return;
+  const existente = window._editandoItens.find(i => i.produtoId === opt.value);
+  if (existente) {
+    existente.quantidade += 1;
+    const p = STATE.get("pedidos").find(x => x.id === window._editandoPedidoId);
+    if (p) _renderizarModalEditarPedido(p);
+    return;
+  }
+  const produto = STATE.get("produtos").find(x => x.id === opt.value);
+  if (!produto) return;
+  window._editandoItens.push({
+    id: UTIL.id(),
+    produtoId: produto.id,
+    nome: produto.nome,
+    preco: produto.preco,
+    quantidade: 1,
+    unidade: produto.unidade || "un",
+    imagem: produto.imagem || "",
+    tamanho: "",
+    complementos: [],
+    observacao: "",
+  });
+  const p = STATE.get("pedidos").find(x => x.id === window._editandoPedidoId);
+  if (p) _renderizarModalEditarPedido(p);
+};
+
+function _atualizarTotaisModalEdicao() {
+  const p = STATE.get("pedidos").find(x => x.id === window._editandoPedidoId);
+  const taxa = p?.taxaEntrega || 0;
+  const { subtotal, total } = _calcularTotaisEdicao(taxa);
+  const elSub = document.getElementById("edit-subtotal");
+  const elTot = document.getElementById("edit-total");
+  if (elSub) elSub.textContent = UTIL.formatarMoeda(subtotal);
+  if (elTot) elTot.textContent = UTIL.formatarMoeda(total);
+}
+
+// Salva edição completa do pedido no MongoDB e sincroniza todo o sistema
+async function salvarEdicaoPedido(id) {
+  const status         = document.getElementById("edit-ped-status")?.value;
+  const formaPagamento = document.getElementById("edit-ped-pagamento")?.value;
+  const endereco       = document.getElementById("edit-ped-endereco")?.value;
+  const itens          = window._editandoItens || [];
+
+  const p = STATE.get("pedidos").find(x => x.id === id);
+  const taxa = p?.taxaEntrega || 0;
+  const subtotal = itens.reduce((s, i) => s + (i.preco * i.quantidade), 0);
+  const total = subtotal + taxa;
+
+  try {
+    const pedidoAtualizado = await API_PEDIDOS.editar(id, {
+      itens, total, subtotal, taxaEntrega: taxa, status, formaPagamento, endereco,
+    });
+
+    // Atualiza estado local com todos os dados retornados do backend
+    STATE.update("pedidos", lista =>
+      lista.map(p => p.id === id ? { ...p, ...pedidoAtualizado, itens, total, subtotal, status, formaPagamento, endereco } : p)
+    );
+
+    // Recarrega produtos do backend para refletir novos estoques e vendas
+    const [produtosAtualizados, estoquesBases] = await Promise.all([
+      API_PRODUTOS.listar(),
+      API_ESTOQUE_BASE.listar(),
+    ]);
+    STATE.set("produtos", produtosAtualizados || []);
+    STATE.set("estoquesBases", estoquesBases || []);
+
+    MODAL.fechar();
+    renderizarAdmPedidos();
+    renderizarAdmProdutos();
+    renderizarControleEstoque();
+    DASHBOARD.atualizar();
+    MODAL.toast("Pedido atualizado com sucesso! ✅");
+  } catch(e) {
+    MODAL.erro("Erro ao salvar: " + e.message);
+  }
+}
+window.salvarEdicaoPedido = salvarEdicaoPedido;
 
 // Drag and drop categorias
 function iniciarDragDrop() {
@@ -1322,10 +1832,13 @@ document.addEventListener("tabchange", (e) => {
   }
   if (secao === "sec-categorias") {
     if (tab === "tab-categorias-lista") renderizarAdmCategorias();
-    if (tab === "tab-controle-estoque") renderizarControleEstoque();
+    // Acompanhamentos agora estão dentro de categorias
+    if (tab === "tab-complementos-lista") renderizarAdmComplementos();
   }
   if (secao === "sec-complementos") {
-    if (tab === "tab-complementos-lista") renderizarAdmComplementos();
+    // sec-complementos agora é a seção Estoque
+    if (tab === "tab-controle-estoque") renderizarControleEstoque();
+    if (tab === "tab-estoque-base" && typeof renderizarEstoqueBase === "function") renderizarEstoqueBase();
   }
   if (secao === "sec-pedidos") {
     renderizarAdmPedidos();
@@ -1356,10 +1869,20 @@ function preencherFormProduto(p) {
   s("prod-imagem", p.imagem); s("prod-preco", p.preco);
   s("prod-unidade", p.unidade || "un"); s("prod-estoque", p.estoque);
   s("prod-validade", p.validade); s("prod-emoji", p.emoji);
+  // Preenche preview de imagem se já tiver
+  if (typeof _preencherPreviewImagem === "function") _preencherPreviewImagem(p.imagem || "");
   const tc = document.getElementById("prod-tem-complementos");
   if (tc) tc.checked = p.temComplementos || false;
   const area = document.getElementById("prod-complementos-area");
   if (area) area.style.display = p.temComplementos ? "block" : "none";
+  // Preenche campos de estoque-base
+  const cbBase = document.getElementById("prod-usa-estoque-base");
+  if (cbBase) {
+    cbBase.checked = p.usaEstoqueBase || false;
+    if (typeof toggleEstoqueBase === "function") toggleEstoqueBase(p.usaEstoqueBase || false);
+    s("prod-estoque-base-id",    p.estoqueBaseId    || "");
+    s("prod-consumo-por-venda",  p.consumoPorVenda  || "");
+  }
   popularSelectCategorias();
   s("prod-categoria", p.categoria);
   const tamanhosSel = document.getElementById("prod-tamanhos");
@@ -1388,8 +1911,7 @@ function preencherFormConfig() {
   s("cfg-instagram", CONFIG.contato.instagram);
   s("cfg-taxa", CONFIG.delivery.taxaEntrega); s("cfg-pedido-min", CONFIG.delivery.pedidoMinimo);
   s("cfg-tempo", CONFIG.delivery.tempoEstimado);
-  s("cfg-senha-adm", CONFIG.senha.admin); s("cfg-senha-conf", CONFIG.senha.confirmacoes);
-  // Horários
+  s("cfg-wpp", CONFIG.contato.whatsapp); s("cfg-wpp-adm", CONFIG.contato.whatsappAdm);
   renderizarHorarios();
   const entrega = document.getElementById("cfg-entrega-ativa");
   if (entrega) entrega.checked = CONFIG.delivery.entregaAtiva;
@@ -1450,13 +1972,12 @@ function salvarConfig() {
     CONFIG.delivery.entregaAtiva = document.getElementById("cfg-entrega-ativa")?.checked;
     CONFIG.delivery.retiradaAtiva = document.getElementById("cfg-retirada-ativa")?.checked;
     CONFIG.funcionamento.aberto = document.getElementById("cfg-loja-aberta")?.checked;
-    const novaSenhaAdm = g("cfg-senha-adm");
-    const novaSenhaConf = g("cfg-senha-conf");
-    if (novaSenhaAdm) CONFIG.senha.admin = novaSenhaAdm;
-    if (novaSenhaConf) CONFIG.senha.confirmacoes = novaSenhaConf;
+    // ⚠️ Senhas NÃO são alteradas via painel — apenas via código-fonte pelo programador
     STORAGE.salvarConfig();
     UTIL.aplicarCores();
     renderizarAdmin();
+    // Se estiver na página da loja (não admin), atualiza status imediatamente
+    if (typeof _verificarStatusLoja === "function") _verificarStatusLoja();
     MODAL.sucesso(ENUMS.MSGS.CONFIG_SALVA);
   });
 }
@@ -1488,6 +2009,10 @@ function bindFormProduto() {
       validade: g("prod-validade"),
       temComplementos: document.getElementById("prod-tem-complementos")?.checked,
       complementosVinculados: compsVinculados,
+      // Campos de estoque-base (produto por peso)
+      usaEstoqueBase:   document.getElementById("prod-usa-estoque-base")?.checked || false,
+      estoqueBaseId:    g("prod-estoque-base-id"),
+      consumoPorVenda:  parseFloat(g("prod-consumo-por-venda")) || 0,
     };
     if (!dados.nome || !dados.preco) { MODAL.erro(ENUMS.MSGS.CAMPO_OBRIGATORIO); return; }
     if (id) { PRODUTOS.editar(id, dados); } else { PRODUTOS.criar(dados); }
@@ -1495,6 +2020,11 @@ function bindFormProduto() {
     document.getElementById("form-produto-id").value = "";
     document.getElementById("form-produto-titulo").textContent = "Novo Produto";
     document.getElementById("prod-complementos-area").style.display = "none";
+    // Limpa campos de estoque-base
+    document.getElementById("config-estoque-base").style.display = "none";
+    document.getElementById("prod-usa-estoque-base").checked = false;
+    // Limpa preview de imagem
+    if (typeof _removerImagemProduto === "function") _removerImagemProduto();
     TABS.ir("sec-produtos", "tab-produtos-lista");
     MODAL.sucesso(ENUMS.MSGS.PRODUTO_SALVO);
   });
@@ -1622,5 +2152,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const opcRetirada = document.getElementById("opc-retirada");
     if (!CONFIG.delivery.entregaAtiva && opcEntrega) opcEntrega.style.display = "none";
     if (!CONFIG.delivery.retiradaAtiva && opcRetirada) opcRetirada.style.display = "none";
+
+    // ✅ Verifica status da loja a cada minuto (reabre/fecha conforme horário)
+    setInterval(() => _verificarStatusLoja(), 60_000);
   }
 });

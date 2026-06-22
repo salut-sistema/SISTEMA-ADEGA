@@ -1,32 +1,57 @@
 // ============================================================
-// models.js — Modelos Mongoose para o Sistema de Adega (Multi-Tenant)
-// Todos os modelos possuem empresaId para isolamento total de dados.
+// models.js — Modelos Mongoose (Multi-Tenant)
+// Todos os schemas possuem empresaId para isolamento total.
 // ============================================================
 const mongoose = require("mongoose");
 
 // ── PRODUTO ──────────────────────────────────────────────────
+// Representa cada produto cadastrado pela empresa
 const ProdutoSchema = new mongoose.Schema({
-  empresaId:           { type: String, required: true, index: true },
-  id:                  { type: String, required: true },
-  nome:                { type: String, required: true },
-  descricao:           { type: String, default: "" },
-  imagem:              { type: String, default: "" },
-  emoji:               { type: String, default: "" },
-  categoria:           { type: String, default: "" },
-  preco:               { type: Number, required: true },
-  unidade:             { type: String, default: "" },
-  tamanhos:            [String],
-  estoque:             { type: mongoose.Schema.Types.Mixed, default: "" },
-  validade:            { type: String, default: "" },
-  ativo:               { type: Boolean, default: true },
-  temComplementos:     { type: Boolean, default: false },
+  empresaId:              { type: String, required: true, index: true },
+  id:                     { type: String, required: true },
+  nome:                   { type: String, required: true },
+  descricao:              { type: String, default: "" },
+  imagem:                 { type: String, default: "" }, // URL ou base64
+  emoji:                  { type: String, default: "" },
+  categoria:              { type: String, default: "" },
+  preco:                  { type: Number, required: true },
+  unidade:                { type: String, default: "" },
+  tamanhos:               [String],
+  estoque:                { type: mongoose.Schema.Types.Mixed, default: "" },
+  validade:               { type: String, default: "" },
+  ativo:                  { type: Boolean, default: true },
+  temComplementos:        { type: Boolean, default: false },
   complementosVinculados: [String],
-  dataCriacao:         { type: String, default: () => new Date().toISOString() },
-  vendas:              { type: Number, default: 0 },
+  dataCriacao:            { type: String, default: () => new Date().toISOString() },
+  vendas:                 { type: Number, default: 0 },
+  // ── Estoque-Base (produtos por peso) ──────────────────────
+  usaEstoqueBase:         { type: Boolean, default: false },       // true = produto por peso
+  estoqueBaseId:          { type: String, default: "" },           // ID do EstoqueBase vinculado
+  consumoPorVenda:        { type: Number, default: 0 },            // quanto consome do base por venda (em g ou ml)
 }, { timestamps: true });
 
-// id único por empresa (não globalmente)
 ProdutoSchema.index({ empresaId: 1, id: 1 }, { unique: true });
+
+// ── ESTOQUE-BASE ─────────────────────────────────────────────
+// Representa o estoque compartilhado por múltiplos produtos (ex: Açaí 20kg)
+const MovimentacaoSchema = new mongoose.Schema({
+  data:       { type: String, default: () => new Date().toISOString() },
+  tipo:       { type: String, enum: ["entrada", "saida", "ajuste"] }, // tipo de movimentação
+  quantidade: Number,     // valor movimentado
+  descricao:  String,     // motivo/descrição
+  pedidoId:   String,     // referência ao pedido, se houver
+}, { _id: false });
+
+const EstoqueBaseSchema = new mongoose.Schema({
+  empresaId:    { type: String, required: true, index: true },
+  id:           { type: String, required: true },
+  nome:         { type: String, required: true },               // Ex: "Açaí"
+  unidade:      { type: String, enum: ["kg", "L"], default: "kg" }, // Kg ou Litros
+  quantidade:   { type: Number, default: 0 },                   // quantidade atual
+  movimentacoes: [MovimentacaoSchema],                           // histórico completo
+}, { timestamps: true });
+
+EstoqueBaseSchema.index({ empresaId: 1, id: 1 }, { unique: true });
 
 // ── CATEGORIA ─────────────────────────────────────────────────
 const CategoriaSchema = new mongoose.Schema({
@@ -63,6 +88,7 @@ const ItemPedidoSchema = new mongoose.Schema({
   imagem:       String,
   quantidade:   Number,
   tamanho:      String,
+  unidade:      String,  // ex: "ml", "L", "kg", "g" — usado para desconto automático do Estoque-Base
   complementos: [{ id: String, nome: String, preco: Number }],
   observacao:   String,
 }, { _id: false });
@@ -78,11 +104,8 @@ const PedidoSchema = new mongoose.Schema({
   subtotal:       Number,
   taxaEntrega:    Number,
   data:           { type: String, default: () => new Date().toISOString() },
-  cliente: {
-    nome:     String,
-    telefone: String,
-  },
-  itens: [ItemPedidoSchema],
+  cliente:        { nome: String, telefone: String },
+  itens:          [ItemPedidoSchema],
 }, { timestamps: true });
 
 PedidoSchema.index({ empresaId: 1, id: 1 }, { unique: true });
@@ -100,9 +123,10 @@ const ConfigSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 module.exports = {
-  Produto:     mongoose.model("Produto",     ProdutoSchema),
-  Categoria:   mongoose.model("Categoria",   CategoriaSchema),
-  Complemento: mongoose.model("Complemento", ComplementoSchema),
-  Pedido:      mongoose.model("Pedido",      PedidoSchema),
-  Config:      mongoose.model("Config",      ConfigSchema),
+  Produto:      mongoose.model("Produto",      ProdutoSchema),
+  EstoqueBase:  mongoose.model("EstoqueBase",  EstoqueBaseSchema),
+  Categoria:    mongoose.model("Categoria",    CategoriaSchema),
+  Complemento:  mongoose.model("Complemento",  ComplementoSchema),
+  Pedido:       mongoose.model("Pedido",       PedidoSchema),
+  Config:       mongoose.model("Config",       ConfigSchema),
 };
