@@ -1589,7 +1589,7 @@ function _calcularTotaisEdicao(taxa) {
 }
 
 function _renderizarModalEditarPedido(p) {
-  const taxa = p.taxaEntrega || 0;
+  const taxa  = p.taxaEntrega || 0;
   const itens = window._editandoItens || [];
   const { subtotal, total } = _calcularTotaisEdicao(taxa);
 
@@ -1616,23 +1616,27 @@ function _renderizarModalEditarPedido(p) {
     </div>
 
     <div style="font-weight:700;margin-bottom:8px;font-size:14px;">🛒 Produtos do Pedido</div>
-    <div id="edit-ped-itens" style="margin-bottom:14px;max-height:240px;overflow-y:auto;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:4px 8px;">
-      ${itens.length === 0 ? `<p style="color:#aaa;font-size:13px;padding:8px 0;">Nenhum item no pedido.</p>` :
-        itens.map((item, idx) => `
+    <div id="edit-ped-itens" style="margin-bottom:14px;max-height:220px;overflow-y:auto;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:4px 8px;">
+      ${itens.length === 0
+        ? `<p style="color:#aaa;font-size:13px;padding:8px 0;">Nenhum item.</p>`
+        : itens.map((item, idx) => `
           <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);">
-            <span style="flex:1;font-size:13px;">${UTIL.sanitize(item.nome)}</span>
-            <span style="font-size:11px;color:#aaa;white-space:nowrap;">${item.unidade || "un"} · ${UTIL.formatarMoeda(item.preco)}</span>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:13px;font-weight:600;">${UTIL.sanitize(item.nome)}</div>
+              ${item.tamanho ? `<div style="font-size:11px;color:#aaa;">📏 ${item.tamanho}</div>` : ""}
+              ${(item.complementos||[]).length ? `<div style="font-size:11px;color:#aaa;">➕ ${item.complementos.map(c=>c.nome).join(", ")}</div>` : ""}
+            </div>
+            <span style="font-size:11px;color:#aaa;white-space:nowrap;">${UTIL.formatarMoeda(item.preco)}</span>
             <input type="number" min="1" value="${item.quantidade}"
               style="width:54px;text-align:center;padding:4px;border-radius:6px;background:var(--bg,#0F0A1A);border:1px solid #444;color:inherit;"
               onchange="window._editarQtdItem(${idx}, this.value)">
             <button onclick="window._removerItemPedido(${idx})"
-              style="background:none;border:none;color:#e55;cursor:pointer;font-size:16px;padding:0 4px;line-height:1;">✕</button>
-          </div>
-        `).join("")}
+              style="background:none;border:none;color:#e55;cursor:pointer;font-size:16px;padding:0 4px;">✕</button>
+          </div>`).join("")}
     </div>
 
     <div style="margin-bottom:14px;">
-      <button onclick="window._abrirSeletorProdutoPedido('${p.id}')"
+      <button onclick="window._abrirCatalogoPedido('${p.id}')"
         style="width:100%;padding:10px;border-radius:8px;border:2px dashed rgba(91,45,142,.5);background:rgba(91,45,142,.08);color:var(--primary,#5B2D8E);cursor:pointer;font-size:13px;font-weight:700;">
         ➕ Adicionar Produto ao Pedido
       </button>
@@ -1671,108 +1675,136 @@ window._removerItemPedido = function(idx) {
   if (p) _renderizarModalEditarPedido(p);
 };
 
-// Abre lista de produtos para selecionar (igual à loja do cliente)
-window._abrirSeletorProdutoPedido = function(pedidoId) {
-  const produtos = STATE.get("produtos").filter(x => x.ativo);
-  document.getElementById("prod-sel-overlay")?.remove();
-  const overlay = document.createElement("div");
-  overlay.id = "prod-sel-overlay";
-  overlay.className = "modal-overlay active";
-  overlay.innerHTML = `
-    <div class="produto-modal" style="max-width:460px;">
-      <button class="produto-modal-close" onclick="document.getElementById('prod-sel-overlay').remove()">✕</button>
-      <div class="pm-body" style="padding-top:16px;">
-        <h3 style="margin:0 0 14px;">🛍️ Selecionar Produto</h3>
-        <input type="text" id="busca-prod-sel" placeholder="Buscar produto..."
-          oninput="window._filtrarProdsSel('${pedidoId}')"
-          style="width:100%;padding:8px 12px;border-radius:8px;background:var(--bg,#0F0A1A);border:1px solid #444;color:inherit;font-size:13px;margin-bottom:12px;box-sizing:border-box;">
-        <div id="lista-prod-sel" style="max-height:340px;overflow-y:auto;"></div>
-      </div>
-    </div>`;
-  document.body.appendChild(overlay);
-  // Popular APÓS adicionar ao DOM para garantir que _renderProdsSel está definido
-  document.getElementById("lista-prod-sel").innerHTML = window._renderProdsSel(produtos, pedidoId);
-  overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
-};
+// ── CATÁLOGO DO PEDIDO ─────────────────────────────────────
+// Passo 1: lista de produtos igual ao catálogo da loja
+window._abrirCatalogoPedido = function(pedidoId) {
+  const prods = STATE.get("produtos").filter(x => x.ativo);
+  document.getElementById("ped-cat-overlay")?.remove();
+  const ov = document.createElement("div");
+  ov.id = "ped-cat-overlay";
+  ov.className = "modal-overlay active";
 
-window._renderProdsSel = function(produtos, pedidoId) {
-  if (!produtos.length) return '<p style="color:#aaa;font-size:13px;padding:8px;">Nenhum produto encontrado.</p>';
-  return produtos.map(pr => `
+  const linhas = prods.map(pr => `
     <div style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid rgba(255,255,255,.06);">
-      <div style="width:42px;height:42px;border-radius:8px;overflow:hidden;flex-shrink:0;background:rgba(91,45,142,.2);display:flex;align-items:center;justify-content:center;">
-        ${pr.imagem ? `<img src="${UTIL.sanitize(pr.imagem)}" style="width:100%;height:100%;object-fit:cover;">` : `<span style="font-size:24px;">${pr.emoji || "🛍️"}</span>`}
+      <div style="width:44px;height:44px;border-radius:8px;overflow:hidden;flex-shrink:0;background:rgba(91,45,142,.2);display:flex;align-items:center;justify-content:center;">
+        ${pr.imagem
+          ? `<img src="${UTIL.sanitize(pr.imagem)}" style="width:100%;height:100%;object-fit:cover;">`
+          : `<span style="font-size:24px;">${pr.emoji || "🛍️"}</span>`}
       </div>
       <div style="flex:1;min-width:0;">
         <div style="font-size:13px;font-weight:600;">${UTIL.sanitize(pr.nome)}</div>
         <div style="font-size:12px;color:#aaa;">${UTIL.formatarMoeda(pr.preco)}${pr.unidade ? "/" + pr.unidade : ""}</div>
       </div>
-      <button onclick="window._abrirDetalhesProdSel('${pedidoId}','${pr.id}')"
-        style="background:var(--primary,#5B2D8E);color:#fff;border:none;border-radius:8px;padding:7px 14px;cursor:pointer;font-size:12px;font-weight:700;white-space:nowrap;">
-        Selecionar
+      <button
+        style="background:var(--primary,#5B2D8E);color:#fff;border:none;border-radius:8px;padding:7px 14px;cursor:pointer;font-size:12px;font-weight:700;white-space:nowrap;"
+        onclick="window._abrirModalProdutoPedido('${pedidoId}','${pr.id}')">
+        Escolher
       </button>
-    </div>
-  `).join("");
+    </div>`).join("");
+
+  ov.innerHTML = `
+    <div class="produto-modal" style="max-width:460px;">
+      <button class="produto-modal-close" onclick="document.getElementById('ped-cat-overlay').remove()">✕</button>
+      <div class="pm-body" style="padding-top:16px;">
+        <h3 style="margin:0 0 12px;">🛍️ Escolha um Produto</h3>
+        <input type="text" placeholder="Buscar..." id="ped-cat-busca"
+          oninput="window._filtrarCatalogoPedido('${pedidoId}')"
+          style="width:100%;padding:8px 12px;border-radius:8px;background:var(--bg,#0F0A1A);border:1px solid #444;color:inherit;font-size:13px;margin-bottom:10px;box-sizing:border-box;">
+        <div id="ped-cat-lista" style="max-height:360px;overflow-y:auto;">${linhas}</div>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener("click", e => { if (e.target === ov) ov.remove(); });
 };
 
-window._filtrarProdsSel = function(pedidoId) {
-  const termo = document.getElementById("busca-prod-sel")?.value?.toLowerCase() || "";
-  const produtos = STATE.get("produtos").filter(x => x.ativo && x.nome.toLowerCase().includes(termo));
-  const lista = document.getElementById("lista-prod-sel");
-  if (lista) lista.innerHTML = window._renderProdsSel(produtos, pedidoId);
+window._filtrarCatalogoPedido = function(pedidoId) {
+  const termo = document.getElementById("ped-cat-busca")?.value?.toLowerCase() || "";
+  const prods = STATE.get("produtos").filter(x => x.ativo && x.nome.toLowerCase().includes(termo));
+  const lista = document.getElementById("ped-cat-lista");
+  if (!lista) return;
+  lista.innerHTML = prods.map(pr => `
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid rgba(255,255,255,.06);">
+      <div style="width:44px;height:44px;border-radius:8px;overflow:hidden;flex-shrink:0;background:rgba(91,45,142,.2);display:flex;align-items:center;justify-content:center;">
+        ${pr.imagem
+          ? `<img src="${UTIL.sanitize(pr.imagem)}" style="width:100%;height:100%;object-fit:cover;">`
+          : `<span style="font-size:24px;">${pr.emoji || "🛍️"}</span>`}
+      </div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:600;">${UTIL.sanitize(pr.nome)}</div>
+        <div style="font-size:12px;color:#aaa;">${UTIL.formatarMoeda(pr.preco)}${pr.unidade ? "/" + pr.unidade : ""}</div>
+      </div>
+      <button
+        style="background:var(--primary,#5B2D8E);color:#fff;border:none;border-radius:8px;padding:7px 14px;cursor:pointer;font-size:12px;font-weight:700;white-space:nowrap;"
+        onclick="window._abrirModalProdutoPedido('${pedidoId}','${pr.id}')">
+        Escolher
+      </button>
+    </div>`).join("");
 };
 
-// Abre modal igual ao da loja: imagem, tamanhos, complementos, qtd, obs
-window._abrirDetalhesProdSel = function(pedidoId, produtoId) {
-  document.getElementById("prod-sel-overlay")?.remove();
-  const produto = STATE.get("produtos").find(x => x.id === produtoId);
+// Passo 2: modal IDÊNTICO ao da loja (cópia de abrirModalProduto) — só muda o botão final
+window._abrirModalProdutoPedido = function(pedidoId, produtoId) {
+  document.getElementById("ped-cat-overlay")?.remove();
+  const produto = STATE.get("produtos").find(p => p.id === produtoId);
   if (!produto) return;
   const complementosDisponiveis = produto.temComplementos ? COMPLEMENTOS.ativos() : [];
   const tamanhos = produto.tamanhos || [];
 
-  const overlay = document.createElement("div");
-  overlay.id = "prod-sel-overlay";
-  overlay.className = "modal-overlay active";
-  overlay.innerHTML = `
+  const ov = document.createElement("div");
+  ov.id = "ped-cat-overlay";
+  ov.className = "modal-overlay active";
+  ov.innerHTML = `
     <div class="produto-modal">
-      <button class="produto-modal-close" onclick="window._abrirSeletorProdutoPedido('${pedidoId}')">← Voltar</button>
+      <button class="produto-modal-close" onclick="window._abrirCatalogoPedido('${pedidoId}')">← Voltar</button>
       ${produto.imagem
         ? `<div class="pm-img"><img src="${UTIL.sanitize(produto.imagem)}" alt="${UTIL.sanitize(produto.nome)}"></div>`
-        : `<div class="pm-img" style="display:flex;align-items:center;justify-content:center;"><span style="font-size:64px;">${produto.emoji || "🛍️"}</span></div>`}
+        : `<div class="pm-img" style="display:flex;align-items:center;justify-content:center;"><span style="font-size:64px">${produto.emoji || "🛍️"}</span></div>`}
       <div class="pm-body">
         <h2>${UTIL.sanitize(produto.nome)}</h2>
         <p class="pm-desc">${UTIL.sanitize(produto.descricao || "")}</p>
         <div class="pm-preco">${UTIL.formatarMoeda(produto.preco)}</div>
-        ${tamanhos.length ? `<div class="pm-secao"><label>Tamanho:</label><div class="pm-tamanhos">${tamanhos.map(t => `<label class="tag-radio"><input type="radio" name="pm-tamanho-sel" value="${t}"><span>${t}</span></label>`).join("")}</div></div>` : ""}
-        ${complementosDisponiveis.length ? `<div class="pm-secao"><label>Complementos:</label><div class="pm-complementos">${complementosDisponiveis.map(c => `<label class="tag-check"><input type="checkbox" name="pm-comp-sel" value="${c.id}" data-nome="${c.nome}" data-preco="${c.preco || 0}"><span>${c.nome}${c.preco ? " (+" + UTIL.formatarMoeda(c.preco) + ")" : ""}</span></label>`).join("")}</div></div>` : ""}
-        <div class="pm-secao"><label>Observação:</label><textarea id="pm-obs-sel" placeholder="Ex: sem açúcar..." rows="2" style="width:100%;border-radius:8px;background:var(--bg,#0F0A1A);border:1px solid #444;color:inherit;padding:8px;box-sizing:border-box;"></textarea></div>
+        ${tamanhos.length
+          ? `<div class="pm-secao"><label>Tamanho:</label><div class="pm-tamanhos">
+              ${tamanhos.map(t => `<label class="tag-radio"><input type="radio" name="pm-tamanho" value="${t}"><span>${t}</span></label>`).join("")}
+             </div></div>`
+          : ""}
+        ${complementosDisponiveis.length
+          ? `<div class="pm-secao"><label>Complementos:</label><div class="pm-complementos">
+              ${complementosDisponiveis.map(c => `<label class="tag-check"><input type="checkbox" name="pm-comp" value="${c.id}" data-nome="${c.nome}" data-preco="${c.preco || 0}"><span>${c.nome}${c.preco ? " (+" + UTIL.formatarMoeda(c.preco) + ")" : ""}</span></label>`).join("")}
+             </div></div>`
+          : ""}
+        <div class="pm-secao"><label>Observação:</label><textarea id="pm-obs" placeholder="Ex: sem açúcar..." rows="2"></textarea></div>
         <div class="pm-qtd-row">
           <div class="pm-qtd">
             <button onclick="pmQtd(-1)">−</button>
             <span id="pm-qtd-val">1</span>
             <button onclick="pmQtd(1)">+</button>
           </div>
-          <button class="btn btn-primary pm-add" onclick="window._confirmarProdSel('${pedidoId}','${produtoId}')">➕ Adicionar ao Pedido</button>
+          <button class="btn btn-primary pm-add"
+            onclick="window._confirmarProdutoPedido('${pedidoId}','${produtoId}')">
+            ➕ Adicionar ao Pedido
+          </button>
         </div>
       </div>
     </div>`;
-  document.body.appendChild(overlay);
-  overlay.addEventListener("click", e => { if (e.target === overlay) window._abrirSeletorProdutoPedido(pedidoId); });
+  document.body.appendChild(ov);
+  ov.addEventListener("click", e => { if (e.target === ov) window._abrirCatalogoPedido(pedidoId); });
 };
 
-// Confirma adição: mesma lógica do carrinho do cliente
-window._confirmarProdSel = function(pedidoId, produtoId) {
-  const produto = STATE.get("produtos").find(x => x.id === produtoId);
+// Passo 3: confirmar — mesma lógica do pmAdicionarCarrinho mas salva em _editandoItens
+window._confirmarProdutoPedido = function(pedidoId, produtoId) {
+  const produto = STATE.get("produtos").find(p => p.id === produtoId);
   if (!produto) return;
 
   const qtd     = parseInt(document.getElementById("pm-qtd-val")?.textContent) || 1;
-  const tamanho = document.querySelector('input[name="pm-tamanho-sel"]:checked')?.value || "";
-  const comps   = [...document.querySelectorAll('input[name="pm-comp-sel"]:checked')]
+  const tamanho = document.querySelector('input[name="pm-tamanho"]:checked')?.value || "";
+  const comps   = [...document.querySelectorAll('input[name="pm-comp"]:checked')]
     .map(el => ({ id: el.value, nome: el.dataset.nome, preco: parseFloat(el.dataset.preco) || 0 }));
-  const obs     = document.getElementById("pm-obs-sel")?.value || "";
-  const unidade = tamanho || produto.unidade || "un";
+  const obs     = document.getElementById("pm-obs")?.value || "";
+
+  // Exatamente como CARRINHO.adicionar calcula
+  const unidade       = tamanho || produto.unidade || "un";
   const precoComComps = produto.preco + comps.reduce((s, c) => s + (c.preco || 0), 0);
 
-  // Verifica se já existe item igual (mesmo produto + tamanho + complementos)
   const existente = window._editandoItens.find(i =>
     i.produtoId === produtoId &&
     (i.tamanho || "") === tamanho &&
@@ -1796,8 +1828,7 @@ window._confirmarProdSel = function(pedidoId, produtoId) {
     });
   }
 
-  document.getElementById("prod-sel-overlay")?.remove();
-  // Reabre o modal de edição com os itens atualizados
+  document.getElementById("ped-cat-overlay")?.remove();
   const p = STATE.get("pedidos").find(x => x.id === pedidoId);
   if (p) _renderizarModalEditarPedido(p);
   MODAL.toast("✅ Produto adicionado! Salve para confirmar.");
