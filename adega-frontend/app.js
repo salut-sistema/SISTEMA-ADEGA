@@ -279,6 +279,16 @@ const MODAL = {
   erro(msg) { this.mostrar("erro", "Ops!", msg); },
   confirmar(msg, cb) { this.mostrar("confirmacao", "Confirmar ação", msg, cb); },
   pedirSenha(titulo, cb) { this.mostrar("senha", titulo, "Digite a senha para continuar:", cb); },
+  abrir(html) {
+    document.getElementById("modal-overlay")?.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "modal-overlay";
+    overlay.className = "modal-overlay";
+    overlay.innerHTML = `<div class="modal-box" role="dialog" aria-modal="true" style="max-width:600px;width:95%;max-height:85vh;overflow-y:auto;">${html}</div>`;
+    document.body.appendChild(overlay);
+    setTimeout(() => overlay.classList.add("active"), 10);
+    overlay.addEventListener("click", e => { if (e.target === overlay) MODAL.fechar(); });
+  },
   toast(msg, tipo = "sucesso") {
     document.querySelectorAll(".toast").forEach(t => t.remove());
     const t = document.createElement("div");
@@ -1028,23 +1038,12 @@ function _verificarStatusLoja() {
   // Remove banner anterior se existir
   document.getElementById("banner-loja-fechada")?.remove();
 
-  const manualAberta = CONFIG.funcionamento?.aberto !== false; // default true
-  const horarioAberta = _lojaAbertaPorHorario();
-  const lojaAberta = manualAberta && horarioAberta;
+  // Loja fechada SOMENTE pelo botão manual "Fechar Loja"
+  const lojaAberta = CONFIG.funcionamento?.aberto !== false; // default true
 
   if (lojaAberta) return; // loja aberta, nada a fazer
 
-  // Determina mensagem
-  let msg;
-  if (!manualAberta) {
-    msg = "🌙 Estamos fora do ar por agora, mas logo voltamos com tudo! Obrigado pela sua preferência. 💜";
-  } else {
-    // Fechado por horário
-    const prox = _proximoHorarioAbertura();
-    msg = prox
-      ? `⏰ Nossa loja está fechada no momento. Voltamos ${prox}. Até logo! 🛍️`
-      : "🌙 Nossa loja está fechada no momento. Em breve abriremos novamente. Fique de olho! 💜";
-  }
+  const msg = "🌙 Estamos fora do ar por agora, mas logo voltamos com tudo! Obrigado pela sua preferência. 💜";
 
   // Cria banner de loja fechada
   const banner = document.createElement("div");
@@ -1251,6 +1250,7 @@ function renderizarAdmProdutos() {
         <button class="btn-icon" onclick="editarProduto('${p.id}')" title="Editar">✏️</button>
         <button class="btn-icon" onclick="pausarProduto('${p.id}')" title="${p.ativo ? 'Pausar' : 'Reativar'}">${p.ativo ? "⏸" : "▶️"}</button>
         <button class="btn-icon btn-icon-del" onclick="excluirProduto('${p.id}')" title="Excluir">🗑️</button>
+
       </div>
     </div>`).join("");
 }
@@ -1590,24 +1590,8 @@ function _calcularTotaisEdicao(taxa) {
 
 function _renderizarModalEditarPedido(p) {
   const taxa = p.taxaEntrega || 0;
-  const produtos = STATE.get("produtos").filter(x => x.ativo);
-  const categorias = STATE.get("categorias").filter(x => x.ativo);
   const itens = window._editandoItens || [];
-
   const { subtotal, total } = _calcularTotaisEdicao(taxa);
-
-  // Monta options agrupadas por categoria
-  const opcoesCategoria = categorias.map(cat => {
-    const prods = produtos.filter(pr => pr.categoria === cat.id);
-    if (!prods.length) return "";
-    return `<optgroup label="${cat.emoji || ""} ${UTIL.sanitize(cat.nome)}">
-      ${prods.map(pr => `<option value="${pr.id}" data-preco="${pr.preco}" data-nome="${UTIL.sanitize(pr.nome)}" data-unidade="${pr.unidade || "un"}">${UTIL.sanitize(pr.nome)} — ${UTIL.formatarMoeda(pr.preco)}/${pr.unidade || "un"}</option>`).join("")}
-    </optgroup>`;
-  }).join("");
-  const semCat = produtos.filter(pr => !categorias.find(c => c.id === pr.categoria));
-  const opcoesSemCat = semCat.length
-    ? `<optgroup label="Sem categoria">${semCat.map(pr => `<option value="${pr.id}" data-preco="${pr.preco}" data-unidade="${pr.unidade || "un"}">${UTIL.sanitize(pr.nome)} — ${UTIL.formatarMoeda(pr.preco)}</option>`).join("")}</optgroup>`
-    : "";
 
   MODAL.abrir(`
     <h3 style="margin:0 0 16px;">✏️ Editar Pedido — ${UTIL.sanitize(p.cliente?.nome || "")}</h3>
@@ -1648,15 +1632,10 @@ function _renderizarModalEditarPedido(p) {
     </div>
 
     <div style="margin-bottom:14px;">
-      <label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">➕ Adicionar Produto</label>
-      <div style="display:flex;gap:8px;">
-        <select id="edit-ped-select-produto" style="flex:1;padding:8px;border-radius:8px;background:var(--bg,#0F0A1A);border:1px solid #444;color:inherit;font-size:13px;">
-          <option value="">Selecione um produto...</option>
-          ${opcoesCategoria}${opcoesSemCat}
-        </select>
-        <button onclick="window._adicionarItemPedido()"
-          style="background:var(--primary,#5B2D8E);color:#fff;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;white-space:nowrap;font-size:13px;">➕ Add</button>
-      </div>
+      <button onclick="window._abrirSeletorProdutoPedido('${p.id}')"
+        style="width:100%;padding:10px;border-radius:8px;border:2px dashed rgba(91,45,142,.5);background:rgba(91,45,142,.08);color:var(--primary,#5B2D8E);cursor:pointer;font-size:13px;font-weight:700;">
+        ➕ Adicionar Produto ao Pedido
+      </button>
     </div>
 
     <div style="background:rgba(91,45,142,.12);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:14px;">
@@ -1692,33 +1671,136 @@ window._removerItemPedido = function(idx) {
   if (p) _renderizarModalEditarPedido(p);
 };
 
-window._adicionarItemPedido = function() {
-  const sel = document.getElementById("edit-ped-select-produto");
-  const opt = sel?.options[sel.selectedIndex];
-  if (!opt?.value) return;
-  const existente = window._editandoItens.find(i => i.produtoId === opt.value);
-  if (existente) {
-    existente.quantidade += 1;
-    const p = STATE.get("pedidos").find(x => x.id === window._editandoPedidoId);
-    if (p) _renderizarModalEditarPedido(p);
-    return;
-  }
-  const produto = STATE.get("produtos").find(x => x.id === opt.value);
+// Abre lista de produtos para selecionar (igual à loja do cliente)
+window._abrirSeletorProdutoPedido = function(pedidoId) {
+  const produtos = STATE.get("produtos").filter(x => x.ativo);
+  document.getElementById("prod-sel-overlay")?.remove();
+  const overlay = document.createElement("div");
+  overlay.id = "prod-sel-overlay";
+  overlay.className = "modal-overlay active";
+  overlay.innerHTML = `
+    <div class="produto-modal" style="max-width:460px;">
+      <button class="produto-modal-close" onclick="document.getElementById('prod-sel-overlay').remove()">✕</button>
+      <div class="pm-body" style="padding-top:16px;">
+        <h3 style="margin:0 0 14px;">🛍️ Selecionar Produto</h3>
+        <input type="text" id="busca-prod-sel" placeholder="Buscar produto..."
+          oninput="window._filtrarProdsSel('${pedidoId}')"
+          style="width:100%;padding:8px 12px;border-radius:8px;background:var(--bg,#0F0A1A);border:1px solid #444;color:inherit;font-size:13px;margin-bottom:12px;box-sizing:border-box;">
+        <div id="lista-prod-sel" style="max-height:340px;overflow-y:auto;"></div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  // Popular APÓS adicionar ao DOM para garantir que _renderProdsSel está definido
+  document.getElementById("lista-prod-sel").innerHTML = window._renderProdsSel(produtos, pedidoId);
+  overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+};
+
+window._renderProdsSel = function(produtos, pedidoId) {
+  if (!produtos.length) return '<p style="color:#aaa;font-size:13px;padding:8px;">Nenhum produto encontrado.</p>';
+  return produtos.map(pr => `
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid rgba(255,255,255,.06);">
+      <div style="width:42px;height:42px;border-radius:8px;overflow:hidden;flex-shrink:0;background:rgba(91,45,142,.2);display:flex;align-items:center;justify-content:center;">
+        ${pr.imagem ? `<img src="${UTIL.sanitize(pr.imagem)}" style="width:100%;height:100%;object-fit:cover;">` : `<span style="font-size:24px;">${pr.emoji || "🛍️"}</span>`}
+      </div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:600;">${UTIL.sanitize(pr.nome)}</div>
+        <div style="font-size:12px;color:#aaa;">${UTIL.formatarMoeda(pr.preco)}${pr.unidade ? "/" + pr.unidade : ""}</div>
+      </div>
+      <button onclick="window._abrirDetalhesProdSel('${pedidoId}','${pr.id}')"
+        style="background:var(--primary,#5B2D8E);color:#fff;border:none;border-radius:8px;padding:7px 14px;cursor:pointer;font-size:12px;font-weight:700;white-space:nowrap;">
+        Selecionar
+      </button>
+    </div>
+  `).join("");
+};
+
+window._filtrarProdsSel = function(pedidoId) {
+  const termo = document.getElementById("busca-prod-sel")?.value?.toLowerCase() || "";
+  const produtos = STATE.get("produtos").filter(x => x.ativo && x.nome.toLowerCase().includes(termo));
+  const lista = document.getElementById("lista-prod-sel");
+  if (lista) lista.innerHTML = window._renderProdsSel(produtos, pedidoId);
+};
+
+// Abre modal igual ao da loja: imagem, tamanhos, complementos, qtd, obs
+window._abrirDetalhesProdSel = function(pedidoId, produtoId) {
+  document.getElementById("prod-sel-overlay")?.remove();
+  const produto = STATE.get("produtos").find(x => x.id === produtoId);
   if (!produto) return;
-  window._editandoItens.push({
-    id: UTIL.id(),
-    produtoId: produto.id,
-    nome: produto.nome,
-    preco: produto.preco,
-    quantidade: 1,
-    unidade: produto.unidade || "un",
-    imagem: produto.imagem || "",
-    tamanho: "",
-    complementos: [],
-    observacao: "",
-  });
-  const p = STATE.get("pedidos").find(x => x.id === window._editandoPedidoId);
+  const complementosDisponiveis = produto.temComplementos ? COMPLEMENTOS.ativos() : [];
+  const tamanhos = produto.tamanhos || [];
+
+  const overlay = document.createElement("div");
+  overlay.id = "prod-sel-overlay";
+  overlay.className = "modal-overlay active";
+  overlay.innerHTML = `
+    <div class="produto-modal">
+      <button class="produto-modal-close" onclick="window._abrirSeletorProdutoPedido('${pedidoId}')">← Voltar</button>
+      ${produto.imagem
+        ? `<div class="pm-img"><img src="${UTIL.sanitize(produto.imagem)}" alt="${UTIL.sanitize(produto.nome)}"></div>`
+        : `<div class="pm-img" style="display:flex;align-items:center;justify-content:center;"><span style="font-size:64px;">${produto.emoji || "🛍️"}</span></div>`}
+      <div class="pm-body">
+        <h2>${UTIL.sanitize(produto.nome)}</h2>
+        <p class="pm-desc">${UTIL.sanitize(produto.descricao || "")}</p>
+        <div class="pm-preco">${UTIL.formatarMoeda(produto.preco)}</div>
+        ${tamanhos.length ? `<div class="pm-secao"><label>Tamanho:</label><div class="pm-tamanhos">${tamanhos.map(t => `<label class="tag-radio"><input type="radio" name="pm-tamanho-sel" value="${t}"><span>${t}</span></label>`).join("")}</div></div>` : ""}
+        ${complementosDisponiveis.length ? `<div class="pm-secao"><label>Complementos:</label><div class="pm-complementos">${complementosDisponiveis.map(c => `<label class="tag-check"><input type="checkbox" name="pm-comp-sel" value="${c.id}" data-nome="${c.nome}" data-preco="${c.preco || 0}"><span>${c.nome}${c.preco ? " (+" + UTIL.formatarMoeda(c.preco) + ")" : ""}</span></label>`).join("")}</div></div>` : ""}
+        <div class="pm-secao"><label>Observação:</label><textarea id="pm-obs-sel" placeholder="Ex: sem açúcar..." rows="2" style="width:100%;border-radius:8px;background:var(--bg,#0F0A1A);border:1px solid #444;color:inherit;padding:8px;box-sizing:border-box;"></textarea></div>
+        <div class="pm-qtd-row">
+          <div class="pm-qtd">
+            <button onclick="pmQtd(-1)">−</button>
+            <span id="pm-qtd-val">1</span>
+            <button onclick="pmQtd(1)">+</button>
+          </div>
+          <button class="btn btn-primary pm-add" onclick="window._confirmarProdSel('${pedidoId}','${produtoId}')">➕ Adicionar ao Pedido</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener("click", e => { if (e.target === overlay) window._abrirSeletorProdutoPedido(pedidoId); });
+};
+
+// Confirma adição: mesma lógica do carrinho do cliente
+window._confirmarProdSel = function(pedidoId, produtoId) {
+  const produto = STATE.get("produtos").find(x => x.id === produtoId);
+  if (!produto) return;
+
+  const qtd     = parseInt(document.getElementById("pm-qtd-val")?.textContent) || 1;
+  const tamanho = document.querySelector('input[name="pm-tamanho-sel"]:checked')?.value || "";
+  const comps   = [...document.querySelectorAll('input[name="pm-comp-sel"]:checked')]
+    .map(el => ({ id: el.value, nome: el.dataset.nome, preco: parseFloat(el.dataset.preco) || 0 }));
+  const obs     = document.getElementById("pm-obs-sel")?.value || "";
+  const unidade = tamanho || produto.unidade || "un";
+  const precoComComps = produto.preco + comps.reduce((s, c) => s + (c.preco || 0), 0);
+
+  // Verifica se já existe item igual (mesmo produto + tamanho + complementos)
+  const existente = window._editandoItens.find(i =>
+    i.produtoId === produtoId &&
+    (i.tamanho || "") === tamanho &&
+    (i.complementos || []).map(c => c.id).sort().join(",") === comps.map(c => c.id).sort().join(",")
+  );
+
+  if (existente) {
+    existente.quantidade += qtd;
+  } else {
+    window._editandoItens.push({
+      id: UTIL.id(),
+      produtoId: produto.id,
+      nome: produto.nome,
+      preco: precoComComps,
+      quantidade: qtd,
+      unidade: unidade,
+      imagem: produto.imagem || "",
+      tamanho: tamanho,
+      complementos: comps,
+      observacao: obs,
+    });
+  }
+
+  document.getElementById("prod-sel-overlay")?.remove();
+  // Reabre o modal de edição com os itens atualizados
+  const p = STATE.get("pedidos").find(x => x.id === pedidoId);
   if (p) _renderizarModalEditarPedido(p);
+  MODAL.toast("✅ Produto adicionado! Salve para confirmar.");
 };
 
 function _atualizarTotaisModalEdicao() {
@@ -1917,8 +1999,13 @@ function preencherFormConfig() {
   if (entrega) entrega.checked = CONFIG.delivery.entregaAtiva;
   const retirada = document.getElementById("cfg-retirada-ativa");
   if (retirada) retirada.checked = CONFIG.delivery.retiradaAtiva;
-  const aberto = document.getElementById("cfg-loja-aberta");
-  if (aberto) aberto.checked = CONFIG.funcionamento.aberto;
+  // Atualiza botão "Fechar Loja"
+  const btnFechar = document.getElementById("btn-fechar-loja");
+  if (btnFechar) {
+    const estaAberta = CONFIG.funcionamento.aberto !== false;
+    btnFechar.textContent = estaAberta ? "🟢 Loja Aberta" : "🔴 Loja Fechada";
+    btnFechar.style.background = estaAberta ? "#2ecc71" : "#e74c3c";
+  }
 }
 
 function renderizarHorarios() {
@@ -1971,7 +2058,7 @@ function salvarConfig() {
     CONFIG.delivery.tempoEstimado = g("cfg-tempo");
     CONFIG.delivery.entregaAtiva = document.getElementById("cfg-entrega-ativa")?.checked;
     CONFIG.delivery.retiradaAtiva = document.getElementById("cfg-retirada-ativa")?.checked;
-    CONFIG.funcionamento.aberto = document.getElementById("cfg-loja-aberta")?.checked;
+    // CONFIG.funcionamento.aberto é controlado pelo botão "Fechar Loja" (toggleFecharLoja)
     // ⚠️ Senhas NÃO são alteradas via painel — apenas via código-fonte pelo programador
     STORAGE.salvarConfig();
     UTIL.aplicarCores();
@@ -2153,7 +2240,116 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!CONFIG.delivery.entregaAtiva && opcEntrega) opcEntrega.style.display = "none";
     if (!CONFIG.delivery.retiradaAtiva && opcRetirada) opcRetirada.style.display = "none";
 
-    // ✅ Verifica status da loja a cada minuto (reabre/fecha conforme horário)
-    setInterval(() => _verificarStatusLoja(), 60_000);
+    // Verifica status inicial da loja (controlado pelo botão Fechar Loja)
+    _verificarStatusLoja();
   }
 });
+
+// ============================================================
+// BOTÃO FECHAR LOJA — Controle manual pelo admin
+// ============================================================
+function toggleFecharLoja() {
+  const estaAberta = CONFIG.funcionamento.aberto !== false;
+  CONFIG.funcionamento.aberto = !estaAberta; // inverte
+
+  // Atualiza visual do botão
+  const btn = document.getElementById("btn-fechar-loja");
+  if (btn) {
+    btn.textContent = CONFIG.funcionamento.aberto ? "🟢 Loja Aberta" : "🔴 Loja Fechada";
+    btn.style.background = CONFIG.funcionamento.aberto ? "#2ecc71" : "#e74c3c";
+  }
+
+  // Salva config
+  STORAGE.salvarConfig();
+  MODAL.toast(CONFIG.funcionamento.aberto ? "✅ Loja aberta com sucesso!" : "🔒 Loja fechada com sucesso!");
+}
+window.toggleFecharLoja = toggleFecharLoja;
+
+// ============================================================
+// ADICIONAR PRODUTO AO PEDIDO (botão ➕ em Produtos Cadastrados)
+// ============================================================
+
+// Abre o mesmo modal do cliente para selecionar tamanho/complementos/qtd,
+// mas ao confirmar adiciona direto ao pedido escolhido pelo admin
+
+async function pmAdicionarAoPedido(produtoId) {
+  const produto = STATE.get("produtos").find(x => x.id === produtoId);
+  if (!produto) return;
+
+  const pedidoId = document.getElementById("pm-pedido-select")?.value;
+  if (!pedidoId) { MODAL.toast("Selecione um pedido."); return; }
+
+  const pedido = STATE.get("pedidos").find(x => x.id === pedidoId);
+  if (!pedido) return;
+
+  const qtd     = parseInt(document.getElementById("pm-qtd-val")?.textContent) || 1;
+  const tamanho = document.querySelector('input[name="pm-tamanho"]:checked')?.value || "";
+  const comps   = [...document.querySelectorAll('input[name="pm-comp"]:checked')]
+    .map(el => ({ id: el.value, nome: el.dataset.nome, preco: parseFloat(el.dataset.preco) || 0 }));
+  const obs     = document.getElementById("pm-obs-adm")?.value || "";
+
+  // Unidade: tamanho selecionado tem prioridade (igual ao carrinho do cliente)
+  const unidade = tamanho || produto.unidade || "un";
+
+  const precoComComps = produto.preco + comps.reduce((s, c) => s + (c.preco || 0), 0);
+
+  const itensAtuais = (pedido.itens || []).map(i => ({ ...i }));
+
+  // Verifica se já existe item igual (mesmo produto + tamanho + complementos iguais)
+  const chave = produtoId + "|" + tamanho + "|" + comps.map(c => c.id).sort().join(",");
+  const existente = itensAtuais.find(i =>
+    i.produtoId === produtoId &&
+    (i.tamanho || "") === tamanho &&
+    (i.complementos || []).map(c => c.id).sort().join(",") === comps.map(c => c.id).sort().join(",")
+  );
+
+  if (existente) {
+    existente.quantidade += qtd;
+  } else {
+    itensAtuais.push({
+      id: UTIL.id(),
+      produtoId: produto.id,
+      nome: produto.nome,
+      preco: precoComComps,
+      quantidade: qtd,
+      unidade: unidade,
+      imagem: produto.imagem || "",
+      tamanho: tamanho,
+      complementos: comps,
+      observacao: obs,
+    });
+  }
+
+  const taxa     = pedido.taxaEntrega || 0;
+  const subtotal = itensAtuais.reduce((s, i) => s + (i.preco * i.quantidade), 0);
+  const total    = subtotal + taxa;
+
+  try {
+    const pedidoAtualizado = await API_PEDIDOS.editar(pedidoId, {
+      itens: itensAtuais, total, subtotal, taxaEntrega: taxa,
+      status: pedido.status, formaPagamento: pedido.formaPagamento, endereco: pedido.endereco,
+    });
+
+    STATE.update("pedidos", lista =>
+      lista.map(p => p.id === pedidoId
+        ? { ...p, ...pedidoAtualizado, itens: itensAtuais, total, subtotal }
+        : p)
+    );
+
+    const [produtosAtualizados, estoquesBases] = await Promise.all([
+      API_PRODUTOS.listar(),
+      API_ESTOQUE_BASE.listar(),
+    ]);
+    STATE.set("produtos", produtosAtualizados);
+    STATE.set("estoques_base", estoquesBases);
+
+    renderizarAdmProdutos?.();
+    renderizarAdmPedidos?.();
+
+    document.getElementById("produto-modal-overlay")?.remove();
+    MODAL.sucesso(`✅ "${produto.nome}"${tamanho ? " ("+tamanho+")" : ""} adicionado ao pedido de ${pedido.cliente?.nome || "cliente"}!`);
+  } catch (err) {
+    MODAL.toast("Erro ao adicionar: " + (err.message || err));
+  }
+}
+window.pmAdicionarAoPedido = pmAdicionarAoPedido;
