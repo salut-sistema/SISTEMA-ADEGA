@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+m<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
@@ -495,15 +495,15 @@
                 <span class="toggle-slider"></span>
               </label>
             </div>
-            <div class="toggle-row">
+            <div class="toggle-row" style="align-items:center;">
               <div>
-                <div class="toggle-label">🟢 Loja aberta</div>
-                <div class="toggle-desc">Controla o status de funcionamento da loja</div>
+                <div class="toggle-label">🔒 Fechar Loja</div>
+                <div class="toggle-desc">Quando ativado, exibe a mensagem de loja fechada para os clientes e bloqueia novos pedidos</div>
               </div>
-              <label class="toggle-switch">
-                <input type="checkbox" id="cfg-loja-aberta" checked>
-                <span class="toggle-slider"></span>
-              </label>
+              <button id="btn-fechar-loja" onclick="toggleFecharLoja()"
+                style="padding:8px 20px;border-radius:8px;border:none;cursor:pointer;font-weight:700;font-size:13px;transition:all .2s;background:#2ecc71;color:#fff;">
+                🟢 Loja Aberta
+              </button>
             </div>
           </div>
 
