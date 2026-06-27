@@ -31,7 +31,7 @@ const EMPRESAS = [
     empresaId:  "casadobroto-001",
     nome:       "casadobrotopizaria",
     login:      "broto",
-    senha:      "broto123",
+    senha:      "broto1234",
     ativo:      true,
     vencimento: null,
     slug:       "pizzariacasadobroto",        // link exclusivo: /loja/bomboniere-maria
