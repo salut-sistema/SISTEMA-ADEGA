@@ -227,7 +227,7 @@ const UTIL = {
       body, body * { color: inherit !important; }
       body { color: ${tx} !important; }
       .badge-danger  { color: #fff !important; background:#e55 !important; }
-      .badge-warning { color: #333 !important; }
+      .badge-warning { color: #ec7070 !important; }
       .badge-success { color: #fff !important; background:#2ecc71 !important; }
       .btn-primary   { color: #fff !important; }
       .btn-danger    { color: #fff !important; }
