@@ -22,7 +22,7 @@ const EMPRESAS = [
     login:      "adega001",
     senha:      "adega001@2025",
     ativo:      true,                       // false = acesso bloqueado
-    vencimento: null,                       // "2025-12-31" ou null = sem vencimento
+    vencimento: "2026-06-27",                       // "2025-12-31" ou null = sem vencimento
     slug:       "adega-joao",              // link exclusivo: /loja/adega-joao
   },
 
