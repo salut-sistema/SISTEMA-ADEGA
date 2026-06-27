@@ -213,12 +213,27 @@ const UTIL = {
     return senha === CONFIG.senha.confirmacoes || senha === CONFIG.senha.admin;
   },
   aplicarCores() {
-    const r = document.documentElement.style;
-    r.setProperty("--primary", CONFIG.loja.corPrimaria);
-    r.setProperty("--secondary", CONFIG.loja.corSecundaria);
-    r.setProperty("--background", CONFIG.loja.corFundo);
-    r.setProperty("--surface", CONFIG.loja.corSuperficie);
-    r.setProperty("--text", CONFIG.loja.corTexto);
+    const r  = document.documentElement.style;
+    const tx = CONFIG.loja.corTexto      || "#F0EAF8";
+    r.setProperty("--primary",    CONFIG.loja.corPrimaria   || "#5B2D8E");
+    r.setProperty("--secondary",  CONFIG.loja.corSecundaria || "#8B5CF6");
+    r.setProperty("--background", CONFIG.loja.corFundo      || "#0D0820");
+    r.setProperty("--surface",    CONFIG.loja.corSuperficie || "#1A1030");
+    r.setProperty("--text",       tx);
+    // Injeta estilo global para cobrir 100% dos textos
+    let st = document.getElementById("__cores");
+    if (!st) { st = document.createElement("style"); st.id = "__cores"; document.head.appendChild(st); }
+    st.textContent = `
+      body, body * { color: inherit !important; }
+      body { color: ${tx} !important; }
+      .badge-danger  { color: #fff !important; background:#e55 !important; }
+      .badge-warning { color: #333 !important; }
+      .badge-success { color: #fff !important; background:#2ecc71 !important; }
+      .btn-primary   { color: #fff !important; }
+      .btn-danger    { color: #fff !important; }
+      a.btn, button.btn { color: #fff !important; }
+      input:not([type=color]), textarea, select { color: ${tx} !important; }
+    `;
   },
 };
 
@@ -349,7 +364,7 @@ const CARRINHO = {
       id: UTIL.id(),
       produtoId: produto.id,
       nome: produto.nome,
-      preco: produto.preco,
+      preco: parseFloat(produto.preco) || 0,
       imagem: produto.imagem,
       quantidade: parseInt(quantidade) || 1,
       tamanho: tamanho || "",
@@ -942,7 +957,13 @@ function abrirModalProduto(produtoId) {
   const produto = STATE.get("produtos").find(p => p.id === produtoId);
   if (!produto || !produto.ativo) return;
   document.getElementById("produto-modal-overlay")?.remove();
-  const complementosDisponiveis = produto.temComplementos ? COMPLEMENTOS.ativos() : [];
+  const complementosDisponiveis = produto.temComplementos
+    ? COMPLEMENTOS.ativos().filter(c =>
+        !produto.complementosVinculados || produto.complementosVinculados.length === 0
+          ? true
+          : produto.complementosVinculados.includes(c.id)
+      )
+    : [];
   const tamanhos = produto.tamanhos || [];
   const overlay = document.createElement("div");
   overlay.id = "produto-modal-overlay";
@@ -956,8 +977,12 @@ function abrirModalProduto(produtoId) {
       <div class="pm-body">
         <h2>${UTIL.sanitize(produto.nome)}</h2>
         <p class="pm-desc">${UTIL.sanitize(produto.descricao || "")}</p>
-        <div class="pm-preco">${UTIL.formatarMoeda(produto.preco)}</div>
-        ${tamanhos.length ? `<div class="pm-secao"><label>Tamanho:</label><div class="pm-tamanhos">${tamanhos.map(t => `<label class="tag-radio"><input type="radio" name="pm-tamanho" value="${t}"><span>${t}</span></label>`).join("")}</div></div>` : ""}
+        <div class="pm-preco" id="pm-preco-display">${UTIL.formatarMoeda(produto.preco)}</div>
+        ${tamanhos.length ? `<div class="pm-secao"><label>Tamanho:</label><div class="pm-tamanhos">${tamanhos.map(t => {
+          const vol   = typeof t === "object" ? t.volume : t;
+          const preco = typeof t === "object" ? t.preco  : null;
+          return `<label class="tag-radio"><input type="radio" name="pm-tamanho" value="${vol}" data-preco="${preco !== null ? preco : produto.preco}" onchange="pmAtualizarPreco(this)"><span>${vol}${preco !== null ? " — " + UTIL.formatarMoeda(preco) : ""}</span></label>`;
+        }).join("")}</div></div>` : ""}
         ${complementosDisponiveis.length ? `<div class="pm-secao"><label>Complementos:</label><div class="pm-complementos">${complementosDisponiveis.map(c => `<label class="tag-check"><input type="checkbox" name="pm-comp" value="${c.id}" data-nome="${c.nome}" data-preco="${c.preco || 0}"><span>${c.nome}${c.preco ? ` (+${UTIL.formatarMoeda(c.preco)})` : ""}</span></label>`).join("")}</div></div>` : ""}
         <div class="pm-secao"><label>Observação:</label><textarea id="pm-obs" placeholder="Ex: sem açúcar..." rows="2"></textarea></div>
         <div class="pm-qtd-row">
@@ -985,14 +1010,22 @@ function pmAdicionarCarrinho(produtoId) {
   const produto = STATE.get("produtos").find(p => p.id === produtoId);
   if (!produto) return;
   const qtd = parseInt(document.getElementById("pm-qtd-val")?.textContent) || 1;
-  const tamanho = document.querySelector('input[name="pm-tamanho"]:checked')?.value || "";
+  const tamanhoEl = document.querySelector('input[name="pm-tamanho"]:checked');
+  const tamanho   = tamanhoEl?.value || "";
+  const precoTam  = tamanhoEl ? parseFloat(tamanhoEl.dataset.preco) || produto.preco : produto.preco;
   const comps = [...document.querySelectorAll('input[name="pm-comp"]:checked')]
     .map(el => ({ id: el.value, nome: el.dataset.nome, preco: parseFloat(el.dataset.preco) || 0 }));
   const obs = document.getElementById("pm-obs")?.value || "";
-  CARRINHO.adicionar(produto, qtd, tamanho, comps, obs);
+  CARRINHO.adicionar({ ...produto, preco: precoTam }, qtd, tamanho, comps, obs);
   document.getElementById("produto-modal-overlay")?.remove();
 }
 window.pmAdicionarCarrinho = pmAdicionarCarrinho;
+
+function pmAtualizarPreco(input) {
+  const el = document.getElementById("pm-preco-display");
+  if (el) el.textContent = UTIL.formatarMoeda(parseFloat(input.dataset.preco) || 0);
+}
+window.pmAtualizarPreco = pmAtualizarPreco;
 
 // ============================================================
 // RENDERIZAÇÃO DO CATÁLOGO
@@ -1193,6 +1226,15 @@ function renderizarProdutos() {
 }
 
 function cardProduto(p) {
+  // Calcular preço exibido: se tem tamanhos com preços, mostrar "a partir de"
+  const tams = (p.tamanhos || []).filter(t => typeof t === "object" && t.volume);
+  let precoLabel = "";
+  if (tams.length > 0) {
+    const menor = Math.min(...tams.map(t => t.preco || 0));
+    precoLabel = `<span class="pc-preco"><small style="font-size:10px;font-weight:400;">a partir de</small><br>${UTIL.formatarMoeda(menor)}</span>`;
+  } else {
+    precoLabel = `<span class="pc-preco">${UTIL.formatarMoeda(p.preco)}</span>`;
+  }
   return `<div class="produto-card" onclick="abrirModalProduto('${p.id}')">
     <div class="pc-img">${p.imagem
       ? `<img src="${UTIL.sanitize(p.imagem)}" alt="${UTIL.sanitize(p.nome)}" loading="lazy">`
@@ -1201,7 +1243,7 @@ function cardProduto(p) {
       <h3>${UTIL.sanitize(p.nome)}</h3>
       ${p.descricao ? `<p>${UTIL.sanitize(p.descricao)}</p>` : ""}
       <div class="pc-footer">
-        <span class="pc-preco">${UTIL.formatarMoeda(p.preco)}</span>
+        ${precoLabel}
         <button class="btn-add" onclick="event.stopPropagation();abrirModalProduto('${p.id}')">+</button>
       </div>
     </div>
@@ -1244,6 +1286,7 @@ function renderizarAdmProdutos() {
       <div class="adm-item-info">
         <strong>${UTIL.sanitize(p.nome)}</strong>
         <small>${UTIL.formatarMoeda(p.preco)} / ${p.unidade || "un"} | Estoque: ${p.estoque ?? "∞"} | Vendas: ${p.vendas || 0}</small>
+        ${(p.tamanhos && p.tamanhos.length) ? `<small>Tamanhos: ${p.tamanhos.map(t => typeof t === "object" ? t.volume + " — " + UTIL.formatarMoeda(t.preco) : t).join(" | ")}</small>` : ""}
         ${!p.ativo ? `<span class="badge-warning">Pausado</span>` : ""}
       </div>
       <div class="adm-item-acoes">
@@ -1420,11 +1463,23 @@ function renderizarAdmComplementos() {
     container.innerHTML = `<p class="sem-dados">Nenhum complemento cadastrado.</p>`;
     return;
   }
-  container.innerHTML = lista.map(c => `
+  const estoquesBases = STATE.get("estoquesBases") || [];
+  container.innerHTML = lista.map(c => {
+    // Linha de estoque: mostra estoque simples ou estoque-base vinculado
+    let estoqueInfo = "";
+    if (c.usaEstoqueBase && c.estoqueBaseId) {
+      const eb = estoquesBases.find(e => e.id === c.estoqueBaseId);
+      const dispQtd = eb ? eb.quantidade.toFixed(3) + " " + eb.unidade : "—";
+      const dispNome = eb ? eb.nome : c.estoqueBaseId;
+      estoqueInfo = `Estoque-Base: <strong>${dispNome}</strong> — Disponível: <strong>${dispQtd}</strong> | Consome: ${c.consumoQtd || 0}${c.consumoUnidade || "g"} por pedido`;
+    } else {
+      estoqueInfo = `Estoque: ${c.estoque !== "" && c.estoque !== undefined && c.estoque !== null ? c.estoque : "∞"}`;
+    }
+    return `
     <div class="adm-item ${c.ativo ? "" : "pausado"}">
       <div class="adm-item-info">
         <strong>${UTIL.sanitize(c.nome)}</strong>
-        <small>+ ${UTIL.formatarMoeda(c.preco || 0)} | Estoque: ${c.estoque ?? "∞"}</small>
+        <small>+ ${UTIL.formatarMoeda(c.preco || 0)} | ${estoqueInfo}</small>
         ${!c.ativo ? `<span class="badge-warning">Pausado</span>` : ""}
       </div>
       <div class="adm-item-acoes">
@@ -1432,7 +1487,8 @@ function renderizarAdmComplementos() {
         <button class="btn-icon" onclick="pausarComplemento('${c.id}')">${c.ativo ? "⏸" : "▶️"}</button>
         <button class="btn-icon btn-icon-del" onclick="excluirComplemento('${c.id}')">🗑️</button>
       </div>
-    </div>`).join("");
+    </div>`;
+  }).join("");
 }
 window.renderizarAdmComplementos = renderizarAdmComplementos;
 
@@ -1461,15 +1517,31 @@ function editarComplemento(id) {
   document.getElementById("comp-nome").value = c.nome;
   document.getElementById("comp-preco").value = c.preco || 0;
   document.getElementById("comp-estoque").value = c.estoque ?? "";
-  document.getElementById("form-comp-titulo").textContent = "Editar Complemento";
-  TABS.ir("sec-complementos", "tab-novo-complemento");
+  // Campos de estoque-base
+  const cbBase = document.getElementById("comp-usa-estoque-base");
+  if (cbBase) {
+    cbBase.checked = c.usaEstoqueBase || false;
+    toggleCompEstoqueBase(c.usaEstoqueBase || false);
+    if (c.usaEstoqueBase) {
+      document.getElementById("comp-estoque-base-id").value = c.estoqueBaseId || "";
+      document.getElementById("comp-consumo-qtd").value = c.consumoQtd || "";
+      document.getElementById("comp-consumo-unidade").value = c.consumoUnidade || "g";
+    }
+  }
+  document.getElementById("form-comp-titulo").textContent = "Editar Acompanhamento";
+  mostrarSecao("sec-categorias");
+  TABS.ir("sec-categorias", "tab-novo-complemento");
 }
 window.editarComplemento = editarComplemento;
 
 // ADMIN — Pedidos
 function renderizarAdmPedidos() {
   const activeContainer = document.getElementById("pedidos-recebidos-lista");
-  const pedidos  = [...STATE.get("pedidos")].reverse();
+  const pedidos = [...STATE.get("pedidos")].sort((a, b) => {
+    const da = new Date(a.data || a.createdAt || 0).getTime();
+    const db = new Date(b.data || b.createdAt || 0).getTime();
+    return db - da; // mais recente primeiro
+  });
 
   // ── Renderiza um card de pedido ──────────────────────────
   const renderPedido = (p) => {
@@ -1493,8 +1565,8 @@ function renderizarAdmPedidos() {
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
           <span class="badge-${corBadge}">${p.status}</span>
           ${btnPago}
-          <button class="btn-icon" title="Editar pedido"
-            onclick="editarPedido('${p.id}')">✏️</button>
+          <button class="btn-icon" title="Adicionar produto ao pedido"
+            onclick="abrirAdicionarProdutoPedido('${p.id}')" style="background:rgba(91,45,142,.2);color:var(--primary,#5B2D8E);">➕</button>
           <button class="btn-icon btn-icon-del" title="Excluir pedido e estornar estoque"
             onclick="confirmarExcluirPedido('${p.id}')">🗑️</button>
         </div>
@@ -1568,203 +1640,105 @@ window.marcarPedidoPago = marcarPedidoPago;
 
 // ── Editar Pedido ─────────────────────────────────────────────
 // Abre modal completo com edição de produtos, quantidades e status
-function editarPedido(id) {
-  const pedidos = STATE.get("pedidos");
-  const p = pedidos.find(x => x.id === id);
-  if (!p) return;
 
-  // Cópia dos itens para edição local
-  window._editandoPedidoId = id;
+// Salva edição completa do pedido no MongoDB e sincroniza todo o sistema
+
+// ============================================================
+// ADICIONAR PRODUTO AO PEDIDO — usa exatamente o mesmo catálogo e modal da loja
+// ============================================================
+function abrirAdicionarProdutoPedido(pedidoId) {
+  const p = STATE.get("pedidos").find(x => x.id === pedidoId);
+  if (!p) return;
+  window._editandoPedidoId = pedidoId;
   window._editandoItens = (p.itens || []).map(i => ({ ...i }));
 
-  _renderizarModalEditarPedido(p);
-}
-window.editarPedido = editarPedido;
-
-function _calcularTotaisEdicao(taxa) {
-  const itens = window._editandoItens || [];
-  const subtotal = itens.reduce((s, i) => s + (i.preco * i.quantidade), 0);
-  const total = subtotal + (taxa || 0);
-  return { subtotal, total };
-}
-
-function _renderizarModalEditarPedido(p) {
-  const taxa  = p.taxaEntrega || 0;
-  const itens = window._editandoItens || [];
-  const { subtotal, total } = _calcularTotaisEdicao(taxa);
-
-  MODAL.abrir(`
-    <h3 style="margin:0 0 16px;">✏️ Editar Pedido — ${UTIL.sanitize(p.cliente?.nome || "")}</h3>
-
-    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
-      <div class="form-grupo" style="flex:1;min-width:130px;">
-        <label>Status</label>
-        <select id="edit-ped-status">
-          ${["pendente","confirmado","preparando","saiu_entrega","entregue","pago","cancelado"]
-            .map(s => `<option value="${s}" ${p.status === s ? "selected" : ""}>${s}</option>`)
-            .join("")}
-        </select>
-      </div>
-      <div class="form-grupo" style="flex:1;min-width:130px;">
-        <label>Pagamento</label>
-        <input type="text" id="edit-ped-pagamento" value="${p.formaPagamento || ""}">
-      </div>
-      <div class="form-grupo" style="flex:2;min-width:200px;">
-        <label>Endereço</label>
-        <input type="text" id="edit-ped-endereco" value="${p.endereco || ""}">
-      </div>
-    </div>
-
-    <div style="font-weight:700;margin-bottom:8px;font-size:14px;">🛒 Produtos do Pedido</div>
-    <div id="edit-ped-itens" style="margin-bottom:14px;max-height:220px;overflow-y:auto;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:4px 8px;">
-      ${itens.length === 0
-        ? `<p style="color:#aaa;font-size:13px;padding:8px 0;">Nenhum item.</p>`
-        : itens.map((item, idx) => `
-          <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);">
-            <div style="flex:1;min-width:0;">
-              <div style="font-size:13px;font-weight:600;">${UTIL.sanitize(item.nome)}</div>
-              ${item.tamanho ? `<div style="font-size:11px;color:#aaa;">📏 ${item.tamanho}</div>` : ""}
-              ${(item.complementos||[]).length ? `<div style="font-size:11px;color:#aaa;">➕ ${item.complementos.map(c=>c.nome).join(", ")}</div>` : ""}
-            </div>
-            <span style="font-size:11px;color:#aaa;white-space:nowrap;">${UTIL.formatarMoeda(item.preco)}</span>
-            <input type="number" min="1" value="${item.quantidade}"
-              style="width:54px;text-align:center;padding:4px;border-radius:6px;background:var(--bg,#0F0A1A);border:1px solid #444;color:inherit;"
-              onchange="window._editarQtdItem(${idx}, this.value)">
-            <button onclick="window._removerItemPedido(${idx})"
-              style="background:none;border:none;color:#e55;cursor:pointer;font-size:16px;padding:0 4px;">✕</button>
-          </div>`).join("")}
-    </div>
-
-    <div style="margin-bottom:14px;">
-      <button onclick="window._abrirCatalogoPedido('${p.id}')"
-        style="width:100%;padding:10px;border-radius:8px;border:2px dashed rgba(91,45,142,.5);background:rgba(91,45,142,.08);color:var(--primary,#5B2D8E);cursor:pointer;font-size:13px;font-weight:700;">
-        ➕ Adicionar Produto ao Pedido
-      </button>
-    </div>
-
-    <div style="background:rgba(91,45,142,.12);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:14px;">
-      <div style="display:flex;justify-content:space-between;color:#aaa;margin-bottom:4px;">
-        <span>Subtotal:</span><span id="edit-subtotal">${UTIL.formatarMoeda(subtotal)}</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;color:#aaa;margin-bottom:4px;">
-        <span>Taxa de entrega:</span><span>${UTIL.formatarMoeda(taxa)}</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;font-weight:800;font-size:15px;">
-        <span>Total:</span><span id="edit-total">${UTIL.formatarMoeda(total)}</span>
-      </div>
-    </div>
-
-    <div style="display:flex;gap:10px;justify-content:flex-end;">
-      <button class="btn btn-outline" onclick="MODAL.fechar()">Cancelar</button>
-      <button class="btn btn-primary" onclick="salvarEdicaoPedido('${p.id}')">💾 Salvar Alterações</button>
-    </div>
-  `);
-}
-
-window._editarQtdItem = function(idx, valor) {
-  const qtd = parseInt(valor) || 1;
-  if (window._editandoItens[idx]) {
-    window._editandoItens[idx].quantidade = Math.max(1, qtd);
-    _atualizarTotaisModalEdicao();
-  }
-};
-
-window._removerItemPedido = function(idx) {
-  window._editandoItens.splice(idx, 1);
-  const p = STATE.get("pedidos").find(x => x.id === window._editandoPedidoId);
-  if (p) _renderizarModalEditarPedido(p);
-};
-
-// ── CATÁLOGO DO PEDIDO ─────────────────────────────────────
-// Passo 1: lista de produtos igual ao catálogo da loja
-window._abrirCatalogoPedido = function(pedidoId) {
+  // Abre catálogo com os cards IDÊNTICOS aos da loja
   const prods = STATE.get("produtos").filter(x => x.ativo);
-  document.getElementById("ped-cat-overlay")?.remove();
+  const cats  = STATE.get("categorias").filter(x => x.ativo);
+
+  // Monta HTML dos cards igual à loja (mesmas classes produto-card, pc-img, pc-body)
+  function cardsHtml(lista) {
+    if (!lista.length) return '<p style="color:#aaa;padding:16px;">Nenhum produto disponível.</p>';
+    return `<div style="display:contents;">${lista.map(p => `
+      <div class="produto-card" onclick="window._pedAbrirProduto('${pedidoId}','${p.id}')" style="font-size:11px;">
+        <div class="pc-img" style="aspect-ratio:1/1;">${p.imagem
+          ? `<img src="${UTIL.sanitize(p.imagem)}" alt="${UTIL.sanitize(p.nome)}" loading="lazy">`
+          : `<span class="pc-emoji" style="font-size:28px;">${p.emoji || "🛍️"}</span>`}
+        </div>
+        <div class="pc-body" style="padding:6px 8px;">
+          <h3 style="font-size:11px;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${UTIL.sanitize(p.nome)}</h3>
+          <div class="pc-footer">
+            <span class="pc-preco" style="font-size:11px;">${UTIL.formatarMoeda(p.preco)}</span>
+            <button class="btn-add" style="width:22px;height:22px;font-size:14px;" onclick="event.stopPropagation();window._pedAbrirProduto('${pedidoId}','${p.id}')">+</button>
+          </div>
+        </div>
+      </div>`).join("")}</div>`;
+  }
+
+  // Remove overlay anterior se existir
+  document.getElementById("ped-loja-overlay")?.remove();
   const ov = document.createElement("div");
-  ov.id = "ped-cat-overlay";
+  ov.id = "ped-loja-overlay";
   ov.className = "modal-overlay active";
-
-  const linhas = prods.map(pr => `
-    <div style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid rgba(255,255,255,.06);">
-      <div style="width:44px;height:44px;border-radius:8px;overflow:hidden;flex-shrink:0;background:rgba(91,45,142,.2);display:flex;align-items:center;justify-content:center;">
-        ${pr.imagem
-          ? `<img src="${UTIL.sanitize(pr.imagem)}" style="width:100%;height:100%;object-fit:cover;">`
-          : `<span style="font-size:24px;">${pr.emoji || "🛍️"}</span>`}
-      </div>
-      <div style="flex:1;min-width:0;">
-        <div style="font-size:13px;font-weight:600;">${UTIL.sanitize(pr.nome)}</div>
-        <div style="font-size:12px;color:#aaa;">${UTIL.formatarMoeda(pr.preco)}${pr.unidade ? "/" + pr.unidade : ""}</div>
-      </div>
-      <button
-        style="background:var(--primary,#5B2D8E);color:#fff;border:none;border-radius:8px;padding:7px 14px;cursor:pointer;font-size:12px;font-weight:700;white-space:nowrap;"
-        onclick="window._abrirModalProdutoPedido('${pedidoId}','${pr.id}')">
-        Escolher
-      </button>
-    </div>`).join("");
-
+  ov.style.cssText = "z-index:9999;";
   ov.innerHTML = `
-    <div class="produto-modal" style="max-width:460px;">
-      <button class="produto-modal-close" onclick="document.getElementById('ped-cat-overlay').remove()">✕</button>
-      <div class="pm-body" style="padding-top:16px;">
-        <h3 style="margin:0 0 12px;">🛍️ Escolha um Produto</h3>
-        <input type="text" placeholder="Buscar..." id="ped-cat-busca"
-          oninput="window._filtrarCatalogoPedido('${pedidoId}')"
-          style="width:100%;padding:8px 12px;border-radius:8px;background:var(--bg,#0F0A1A);border:1px solid #444;color:inherit;font-size:13px;margin-bottom:10px;box-sizing:border-box;">
-        <div id="ped-cat-lista" style="max-height:360px;overflow-y:auto;">${linhas}</div>
+    <div class="modal-box" style="max-width:700px;width:96%;max-height:90vh;overflow-y:auto;padding:20px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <h3 style="margin:0;">🛍️ Adicionar ao Pedido</h3>
+        <button onclick="document.getElementById('ped-loja-overlay').remove()"
+          style="background:none;border:none;color:#aaa;font-size:22px;cursor:pointer;line-height:1;">✕</button>
       </div>
+      <input type="text" id="ped-loja-busca" placeholder="Buscar produto..."
+        class="input-busca"
+        style="width:100%;padding:8px 12px;border-radius:8px;background:var(--bg,#0F0A1A);border:1px solid #444;color:inherit;font-size:13px;margin-bottom:14px;box-sizing:border-box;"
+        oninput="(function(){
+          const t = document.getElementById('ped-loja-busca').value.toLowerCase();
+          const f = STATE.get('produtos').filter(x => x.ativo && x.nome.toLowerCase().includes(t));
+          document.getElementById('ped-loja-grid').innerHTML = window._pedCardsHtml('${pedidoId}', f);
+        })()">
+      <div id="ped-loja-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">${cardsHtml(prods)}</div>
     </div>`;
   document.body.appendChild(ov);
   ov.addEventListener("click", e => { if (e.target === ov) ov.remove(); });
-};
 
-window._filtrarCatalogoPedido = function(pedidoId) {
-  const termo = document.getElementById("ped-cat-busca")?.value?.toLowerCase() || "";
-  const prods = STATE.get("produtos").filter(x => x.ativo && x.nome.toLowerCase().includes(termo));
-  const lista = document.getElementById("ped-cat-lista");
-  if (!lista) return;
-  lista.innerHTML = prods.map(pr => `
-    <div style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid rgba(255,255,255,.06);">
-      <div style="width:44px;height:44px;border-radius:8px;overflow:hidden;flex-shrink:0;background:rgba(91,45,142,.2);display:flex;align-items:center;justify-content:center;">
-        ${pr.imagem
-          ? `<img src="${UTIL.sanitize(pr.imagem)}" style="width:100%;height:100%;object-fit:cover;">`
-          : `<span style="font-size:24px;">${pr.emoji || "🛍️"}</span>`}
-      </div>
-      <div style="flex:1;min-width:0;">
-        <div style="font-size:13px;font-weight:600;">${UTIL.sanitize(pr.nome)}</div>
-        <div style="font-size:12px;color:#aaa;">${UTIL.formatarMoeda(pr.preco)}${pr.unidade ? "/" + pr.unidade : ""}</div>
-      </div>
-      <button
-        style="background:var(--primary,#5B2D8E);color:#fff;border:none;border-radius:8px;padding:7px 14px;cursor:pointer;font-size:12px;font-weight:700;white-space:nowrap;"
-        onclick="window._abrirModalProdutoPedido('${pedidoId}','${pr.id}')">
-        Escolher
-      </button>
-    </div>`).join("");
-};
+  // Expor para o oninput
+  window._pedCardsHtml = (pedidoId, lista) => cardsHtml(lista);
+}
+window.abrirAdicionarProdutoPedido = abrirAdicionarProdutoPedido;
 
-// Passo 2: modal IDÊNTICO ao da loja (cópia de abrirModalProduto) — só muda o botão final
-window._abrirModalProdutoPedido = function(pedidoId, produtoId) {
-  document.getElementById("ped-cat-overlay")?.remove();
+// Ao clicar no card: abre EXATAMENTE abrirModalProduto da loja, só troca o botão final
+window._pedAbrirProduto = function(pedidoId, produtoId) {
+  document.getElementById("ped-loja-overlay")?.remove();
   const produto = STATE.get("produtos").find(p => p.id === produtoId);
   if (!produto) return;
-  const complementosDisponiveis = produto.temComplementos ? COMPLEMENTOS.ativos() : [];
+  const complementosDisponiveis = produto.temComplementos
+    ? COMPLEMENTOS.ativos().filter(c =>
+        !produto.complementosVinculados || produto.complementosVinculados.length === 0
+          ? true
+          : produto.complementosVinculados.includes(c.id)
+      )
+    : [];
   const tamanhos = produto.tamanhos || [];
 
-  const ov = document.createElement("div");
-  ov.id = "ped-cat-overlay";
-  ov.className = "modal-overlay active";
-  ov.innerHTML = `
+  // Usa o mesmo overlay e classes do abrirModalProduto da loja
+  document.getElementById("produto-modal-overlay")?.remove();
+  const overlay = document.createElement("div");
+  overlay.id = "produto-modal-overlay";
+  overlay.className = "modal-overlay active";
+  overlay.style.cssText = "z-index:9999;";
+  overlay.innerHTML = `
     <div class="produto-modal">
-      <button class="produto-modal-close" onclick="window._abrirCatalogoPedido('${pedidoId}')">← Voltar</button>
+      <button class="produto-modal-close" onclick="document.getElementById('produto-modal-overlay').remove();abrirAdicionarProdutoPedido('${pedidoId}')">← Voltar</button>
       ${produto.imagem
         ? `<div class="pm-img"><img src="${UTIL.sanitize(produto.imagem)}" alt="${UTIL.sanitize(produto.nome)}"></div>`
         : `<div class="pm-img" style="display:flex;align-items:center;justify-content:center;"><span style="font-size:64px">${produto.emoji || "🛍️"}</span></div>`}
       <div class="pm-body">
         <h2>${UTIL.sanitize(produto.nome)}</h2>
         <p class="pm-desc">${UTIL.sanitize(produto.descricao || "")}</p>
-        <div class="pm-preco">${UTIL.formatarMoeda(produto.preco)}</div>
+        <div class="pm-preco" id="pm-preco-display">${UTIL.formatarMoeda(produto.preco)}</div>
         ${tamanhos.length
           ? `<div class="pm-secao"><label>Tamanho:</label><div class="pm-tamanhos">
-              ${tamanhos.map(t => `<label class="tag-radio"><input type="radio" name="pm-tamanho" value="${t}"><span>${t}</span></label>`).join("")}
+              ${tamanhos.map(t => { const vol = typeof t === "object" ? t.volume : t; const pr = typeof t === "object" ? t.preco : produto.preco; return `<label class="tag-radio"><input type="radio" name="pm-tamanho" value="${vol}" data-preco="${pr}" onchange="pmAtualizarPreco(this)"><span>${vol} — ${UTIL.formatarMoeda(pr)}</span></label>`; }).join("")}
              </div></div>`
           : ""}
         ${complementosDisponiveis.length
@@ -1780,18 +1754,18 @@ window._abrirModalProdutoPedido = function(pedidoId, produtoId) {
             <button onclick="pmQtd(1)">+</button>
           </div>
           <button class="btn btn-primary pm-add"
-            onclick="window._confirmarProdutoPedido('${pedidoId}','${produtoId}')">
+            onclick="window._pedConfirmarProduto('${pedidoId}','${produtoId}')">
             ➕ Adicionar ao Pedido
           </button>
         </div>
       </div>
     </div>`;
-  document.body.appendChild(ov);
-  ov.addEventListener("click", e => { if (e.target === ov) window._abrirCatalogoPedido(pedidoId); });
+  document.body.appendChild(overlay);
+  overlay.addEventListener("click", e => { if (e.target === overlay) { overlay.remove(); abrirAdicionarProdutoPedido(pedidoId); } });
 };
 
-// Passo 3: confirmar — mesma lógica do pmAdicionarCarrinho mas salva em _editandoItens
-window._confirmarProdutoPedido = function(pedidoId, produtoId) {
+// Confirmar: mesma lógica do pmAdicionarCarrinho, salva no pedido e sincroniza tudo
+window._pedConfirmarProduto = function(pedidoId, produtoId) {
   const produto = STATE.get("produtos").find(p => p.id === produtoId);
   if (!produto) return;
 
@@ -1800,9 +1774,7 @@ window._confirmarProdutoPedido = function(pedidoId, produtoId) {
   const comps   = [...document.querySelectorAll('input[name="pm-comp"]:checked')]
     .map(el => ({ id: el.value, nome: el.dataset.nome, preco: parseFloat(el.dataset.preco) || 0 }));
   const obs     = document.getElementById("pm-obs")?.value || "";
-
-  // Exatamente como CARRINHO.adicionar calcula
-  const unidade       = tamanho || produto.unidade || "un";
+  const unidade = tamanho || produto.unidade || "un";
   const precoComComps = produto.preco + comps.reduce((s, c) => s + (c.preco || 0), 0);
 
   const existente = window._editandoItens.find(i =>
@@ -1828,23 +1800,12 @@ window._confirmarProdutoPedido = function(pedidoId, produtoId) {
     });
   }
 
-  document.getElementById("ped-cat-overlay")?.remove();
-  const p = STATE.get("pedidos").find(x => x.id === pedidoId);
-  if (p) _renderizarModalEditarPedido(p);
-  MODAL.toast("✅ Produto adicionado! Salve para confirmar.");
+  document.getElementById("produto-modal-overlay")?.remove();
+
+  // Salva direto no backend — reutiliza salvarEdicaoPedido que sincroniza estoque, faturamento, dashboard
+  salvarEdicaoPedido(pedidoId);
 };
 
-function _atualizarTotaisModalEdicao() {
-  const p = STATE.get("pedidos").find(x => x.id === window._editandoPedidoId);
-  const taxa = p?.taxaEntrega || 0;
-  const { subtotal, total } = _calcularTotaisEdicao(taxa);
-  const elSub = document.getElementById("edit-subtotal");
-  const elTot = document.getElementById("edit-total");
-  if (elSub) elSub.textContent = UTIL.formatarMoeda(subtotal);
-  if (elTot) elTot.textContent = UTIL.formatarMoeda(total);
-}
-
-// Salva edição completa do pedido no MongoDB e sincroniza todo o sistema
 async function salvarEdicaoPedido(id) {
   const status         = document.getElementById("edit-ped-status")?.value;
   const formaPagamento = document.getElementById("edit-ped-pagamento")?.value;
@@ -1998,10 +1959,19 @@ function preencherFormProduto(p) {
   }
   popularSelectCategorias();
   s("prod-categoria", p.categoria);
-  const tamanhosSel = document.getElementById("prod-tamanhos");
-  if (tamanhosSel) {
-    [...tamanhosSel.options].forEach(o => { o.selected = (p.tamanhos || []).includes(o.value); });
-  }
+  // Preencher tamanhos com preço
+  const VOLS_ED = ["200ml","300ml","400ml","500ml","700ml","1L"];
+  VOLS_ED.forEach(v => {
+    const cb  = document.getElementById("tam-" + v);
+    const inp = document.getElementById("tam-preco-" + v);
+    if (!cb) return;
+    const tam = (p.tamanhos || []).find(t => (typeof t === "object" ? t.volume : t) === v);
+    const ativo = !!tam;
+    cb.checked   = ativo;
+    if (inp) { inp.disabled = !ativo; inp.value = ativo && typeof tam === "object" ? (tam.preco || "") : ""; }
+  });
+  const todosEl = document.getElementById("sel-todos-tamanhos");
+  if (todosEl) todosEl.checked = VOLS_ED.every(v => document.getElementById("tam-" + v)?.checked);
   popularComplementosProd();
   if (p.complementosVinculados) {
     document.querySelectorAll('input[name="prod-comp"]').forEach(cb => {
@@ -2014,8 +1984,12 @@ function preencherFormProduto(p) {
 function preencherFormConfig() {
   const s = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ""; };
   s("cfg-nome", CONFIG.loja.nome); s("cfg-slogan", CONFIG.loja.slogan);
-  s("cfg-logo", CONFIG.loja.logo); s("cfg-logoUrl", CONFIG.loja.logoUrl);
-  s("cfg-banner", CONFIG.loja.banner);
+  s("cfg-logo", CONFIG.loja.logo);
+  // Preenche uploads de logo e banner
+  if (typeof _preencherLogoUrl === "function") _preencherLogoUrl(CONFIG.loja.logoUrl || "");
+  else { const el = document.getElementById("cfg-logoUrl"); if (el) el.value = CONFIG.loja.logoUrl || ""; }
+  if (typeof _preencherBanner === "function") _preencherBanner(CONFIG.loja.banner || "");
+  else { const el = document.getElementById("cfg-banner"); if (el) el.value = CONFIG.loja.banner || ""; }
   s("cfg-cor-primary", CONFIG.loja.corPrimaria); s("cfg-cor-secondary", CONFIG.loja.corSecundaria);
   s("cfg-cor-bg", CONFIG.loja.corFundo); s("cfg-cor-surface", CONFIG.loja.corSuperficie);
   s("cfg-cor-text", CONFIG.loja.corTexto);
@@ -2115,8 +2089,11 @@ function bindFormProduto() {
     e.preventDefault();
     const g = id => document.getElementById(id)?.value?.trim() || "";
     const id = g("form-produto-id");
-    const tamanhosSel = document.getElementById("prod-tamanhos");
-    const tamanhos = tamanhosSel ? [...tamanhosSel.selectedOptions].map(o => o.value) : [];
+    // Ler tamanhos com preço
+    const VOLS_TAMANHOS = ["200ml","300ml","400ml","500ml","700ml","1L"];
+    const tamanhos = VOLS_TAMANHOS
+      .filter(v => document.getElementById("tam-" + v)?.checked)
+      .map(v => ({ volume: v, preco: parseFloat(document.getElementById("tam-preco-" + v)?.value) || 0 }));
     const compsVinculados = [...document.querySelectorAll('input[name="prod-comp"]:checked')].map(el => el.value);
     const dados = {
       nome: g("prod-nome"), descricao: g("prod-descricao"), imagem: g("prod-imagem"),
@@ -2141,6 +2118,15 @@ function bindFormProduto() {
     // Limpa campos de estoque-base
     document.getElementById("config-estoque-base").style.display = "none";
     document.getElementById("prod-usa-estoque-base").checked = false;
+    // Limpa tamanhos
+    ["200ml","300ml","400ml","500ml","700ml","1L"].forEach(v => {
+      const cb  = document.getElementById("tam-" + v);
+      const inp = document.getElementById("tam-preco-" + v);
+      if (cb)  cb.checked = false;
+      if (inp) { inp.value = ""; inp.disabled = true; }
+    });
+    const todosEl = document.getElementById("sel-todos-tamanhos");
+    if (todosEl) todosEl.checked = false;
     // Limpa preview de imagem
     if (typeof _removerImagemProduto === "function") _removerImagemProduto();
     TABS.ir("sec-produtos", "tab-produtos-lista");
@@ -2190,19 +2176,41 @@ function bindFormComplemento() {
     const id = g("comp-id");
     const nome = g("comp-nome");
     if (!nome) { MODAL.erro(ENUMS.MSGS.CAMPO_OBRIGATORIO); return; }
+    const usaBase = document.getElementById("comp-usa-estoque-base")?.checked || false;
     const dados = {
       nome,
       preco: parseFloat(g("comp-preco")) || 0,
       estoque: g("comp-estoque") !== "" ? parseInt(g("comp-estoque")) : "",
+      usaEstoqueBase: usaBase,
+      estoqueBaseId:  usaBase ? g("comp-estoque-base-id") : "",
+      consumoQtd:     usaBase ? parseFloat(g("comp-consumo-qtd")) || 0 : 0,
+      consumoUnidade: usaBase ? g("comp-consumo-unidade") || "g" : "",
     };
     if (id) { COMPLEMENTOS.editar(id, dados); } else { COMPLEMENTOS.criar(dados); }
     form.reset();
+    const cbBase = document.getElementById("comp-usa-estoque-base");
+    if (cbBase) { cbBase.checked = false; toggleCompEstoqueBase(false); }
     document.getElementById("comp-id").value = "";
-    document.getElementById("form-comp-titulo").textContent = "Novo Complemento";
-    TABS.ir("sec-complementos", "tab-complementos-lista");
+    document.getElementById("form-comp-titulo").textContent = "Novo Acompanhamento";
     MODAL.sucesso(ENUMS.MSGS.COMPLEMENTO_SALVO);
   });
 }
+
+function toggleCompEstoqueBase(ativo) {
+  const cfg = document.getElementById("comp-estoque-base-config");
+  if (cfg) cfg.style.display = ativo ? "block" : "none";
+  // Popular select de estoques base
+  if (ativo) {
+    const sel = document.getElementById("comp-estoque-base-id");
+    if (sel) {
+      const bases = STATE.get("estoquesBases") || [];
+      const atual = sel.value;
+      sel.innerHTML = '<option value="">Selecione...</option>' +
+        bases.map(b => `<option value="${b.id}" ${b.id === atual ? "selected" : ""}>${b.nome} (${b.unidade})</option>`).join("");
+    }
+  }
+}
+window.toggleCompEstoqueBase = toggleCompEstoqueBase;
 
 function bindCarrinhoFinalizacao() {
   document.querySelectorAll('input[name="tipo-entrega"]').forEach(r => {
@@ -2314,7 +2322,9 @@ async function pmAdicionarAoPedido(produtoId) {
   if (!pedido) return;
 
   const qtd     = parseInt(document.getElementById("pm-qtd-val")?.textContent) || 1;
-  const tamanho = document.querySelector('input[name="pm-tamanho"]:checked')?.value || "";
+  const _tamEl = document.querySelector('input[name="pm-tamanho"]:checked');
+  const tamanho = _tamEl?.value || "";
+  const precoTamanho = _tamEl ? parseFloat(_tamEl.dataset.preco) || produto.preco : produto.preco;
   const comps   = [...document.querySelectorAll('input[name="pm-comp"]:checked')]
     .map(el => ({ id: el.value, nome: el.dataset.nome, preco: parseFloat(el.dataset.preco) || 0 }));
   const obs     = document.getElementById("pm-obs-adm")?.value || "";
@@ -2322,7 +2332,7 @@ async function pmAdicionarAoPedido(produtoId) {
   // Unidade: tamanho selecionado tem prioridade (igual ao carrinho do cliente)
   const unidade = tamanho || produto.unidade || "un";
 
-  const precoComComps = produto.preco + comps.reduce((s, c) => s + (c.preco || 0), 0);
+  const precoComComps = precoTamanho + comps.reduce((s, c) => s + (c.preco || 0), 0);
 
   const itensAtuais = (pedido.itens || []).map(i => ({ ...i }));
 

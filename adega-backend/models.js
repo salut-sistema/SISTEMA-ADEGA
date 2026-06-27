@@ -16,7 +16,7 @@ const ProdutoSchema = new mongoose.Schema({
   categoria:              { type: String, default: "" },
   preco:                  { type: Number, required: true },
   unidade:                { type: String, default: "" },
-  tamanhos:               [String],
+  tamanhos:               [{ volume: String, preco: { type: Number, default: 0 } }],
   estoque:                { type: mongoose.Schema.Types.Mixed, default: "" },
   validade:               { type: String, default: "" },
   ativo:                  { type: Boolean, default: true },
@@ -69,12 +69,17 @@ CategoriaSchema.index({ empresaId: 1, id: 1 }, { unique: true });
 
 // ── COMPLEMENTO ───────────────────────────────────────────────
 const ComplementoSchema = new mongoose.Schema({
-  empresaId: { type: String, required: true, index: true },
-  id:        { type: String, required: true },
-  nome:      { type: String, required: true },
-  preco:     { type: Number, default: 0 },
-  estoque:   { type: mongoose.Schema.Types.Mixed, default: "" },
-  ativo:     { type: Boolean, default: true },
+  empresaId:      { type: String, required: true, index: true },
+  id:             { type: String, required: true },
+  nome:           { type: String, required: true },
+  preco:          { type: Number, default: 0 },
+  estoque:        { type: mongoose.Schema.Types.Mixed, default: "" },
+  ativo:          { type: Boolean, default: true },
+  // ── Desconto de Estoque-Base ───────────────────────────────
+  usaEstoqueBase: { type: Boolean, default: false },    // true = desconta do estoque-base ao vender
+  estoqueBaseId:  { type: String, default: "" },         // ID do EstoqueBase vinculado
+  consumoUnidade: { type: String, default: "" },         // "g", "kg" ou "ml"
+  consumoQtd:     { type: Number, default: 0 },          // quantidade consumida por pedido
 }, { timestamps: true });
 
 ComplementoSchema.index({ empresaId: 1, id: 1 }, { unique: true });

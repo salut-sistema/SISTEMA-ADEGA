@@ -44,6 +44,12 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
+/* Herança de cor: todos os elementos herdam do body por padrão */
+body * { color: inherit; }
+/* Exceções: elementos com cor funcional mantêm a sua */
+.badge-danger, .badge-warning, .badge-success,
+.btn-primary, .btn-danger, .btn-outline,
+[style*="color:#"], [style*="color: #"] { color: unset; }
 
 img { max-width: 100%; height: auto; display: block; object-fit: cover; }
 a { color: inherit; text-decoration: none; }

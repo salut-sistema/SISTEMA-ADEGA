@@ -28,22 +28,22 @@ const EMPRESAS = [
 
   // ── EMPRESA 2 ─────────────────────────────────────────────
   {
-    empresaId:  "bombo-001",
-    nome:       "Bomboniere da Maria",
-    login:      "bombo001",
-    senha:      "bombo001@2025",
+    empresaId:  "casadobroto-001",
+    nome:       "casadobrotopizaria",
+    login:      "broto",
+    senha:      "broto123",
     ativo:      true,
     vencimento: null,
-    slug:       "bomboniere-maria",        // link exclusivo: /loja/bomboniere-maria
+    slug:       "pizzariacasadobroto",        // link exclusivo: /loja/bomboniere-maria
   },
     {
     empresaId:  "ma-1",
-    nome:       "ma",
-    login:      "ma",
-    senha:      "ma",
+    nome:       "marcia",
+    login:      "marcia",
+    senha:      "marcia1234",
     ativo:      true,
     vencimento: null,
-    slug:       "bomboniere-maria",        // link exclusivo: /loja/bomboniere-maria
+    slug:       "pointmorena",        // link exclusivo: /loja/bomboniere-maria
   },
 
   

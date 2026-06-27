@@ -38,13 +38,14 @@ router.get("/loja/:slug", async (req, res) => {
     const empresa = EMPRESAS.find(e => e.slug === req.params.slug);
     if (!empresa || !empresaValida(empresa)) return err(res, "Loja não encontrada", 404);
 
-    const [config, categorias, produtos] = await Promise.all([
+    const [config, categorias, produtos, complementos] = await Promise.all([
       Config.findOne({ empresaId: empresa.empresaId }).lean(),
       Categoria.find({ empresaId: empresa.empresaId, ativo: true }).sort({ ordem: 1 }).lean(),
       Produto.find({ empresaId: empresa.empresaId, ativo: true }).sort({ dataCriacao: 1 }).lean(),
+      Complemento.find({ empresaId: empresa.empresaId, ativo: true }).lean(),
     ]);
 
-    ok(res, { empresaId: empresa.empresaId, nome: empresa.nome, slug: empresa.slug, config: config || {}, categorias, produtos });
+    ok(res, { empresaId: empresa.empresaId, nome: empresa.nome, slug: empresa.slug, config: config || {}, categorias, produtos, complementos });
   } catch (e) { err(res, e.message); }
 });
 
@@ -80,15 +81,31 @@ router.get("/produtos", async (req, res) => {
 
 // POST /api/produtos — cria novo produto
 router.post("/produtos", async (req, res) => {
-  try { ok(res, await Produto.create({ ...req.body, empresaId: req.empresaId })); }
+  try {
+    // Normaliza tamanhos: aceita string[] ou {volume,preco}[]
+    const tamanhos = (req.body.tamanhos || []).map(t =>
+      typeof t === "string" ? { volume: t, preco: 0 } : t
+    );
+    ok(res, await Produto.create({
+      ...req.body,
+      tamanhos,
+      ativo: true,           // garante sempre ativo ao criar
+      empresaId: req.empresaId,
+    }));
+  }
   catch (e) { err(res, e.message); }
 });
 
 // PUT /api/produtos/:id — edita produto existente
 router.put("/produtos/:id", async (req, res) => {
   try {
+    const tamanhos = (req.body.tamanhos || []).map(t =>
+      typeof t === "string" ? { volume: t, preco: 0 } : t
+    );
     const p = await Produto.findOneAndUpdate(
-      { empresaId: req.empresaId, id: req.params.id }, req.body, { new: true }
+      { empresaId: req.empresaId, id: req.params.id },
+      { ...req.body, tamanhos },
+      { new: true }
     );
     if (!p) return err(res, "Produto não encontrado", 404);
     ok(res, p);
@@ -449,6 +466,18 @@ function _converterParaKgOuL(quantidade, unidadeStr) {
   }
 }
 
+// Converte uma quantidade + unidade direta (g, kg, ml) para kg ou L
+function _converterFatorParaKgOuL(qtd, unidade) {
+  const u = (unidade || "").toLowerCase().trim();
+  switch (u) {
+    case "g":  return qtd / 1000;   // g → kg
+    case "kg": return qtd;
+    case "ml": return qtd / 1000;   // ml → L
+    case "l":  return qtd;
+    default:   return qtd;
+  }
+}
+
 // ============================================================
 // FUNÇÃO INTERNA — desconta estoque ao criar pedido
 // ============================================================
@@ -489,10 +518,27 @@ async function _descontarEstoque(empresaId, itens = []) {
 
     for (const comp of (item.complementos || [])) {
       const c = await Complemento.findOne({ empresaId, id: comp.id });
-      if (c && c.estoque !== "" && c.estoque !== undefined) {
+      if (!c) continue;
+      // Desconta estoque simples do complemento
+      if (c.estoque !== "" && c.estoque !== undefined) {
         c.estoque = Math.max(0, Number(c.estoque) - item.quantidade);
-        await c.save();
       }
+      // Desconta do Estoque-Base se configurado
+      if (c.usaEstoqueBase && c.estoqueBaseId && c.consumoQtd > 0) {
+        const fator = _converterFatorParaKgOuL(c.consumoQtd, c.consumoUnidade || "g");
+        const totalConsumo = fator * item.quantidade;
+        const eb = await EstoqueBase.findOne({ empresaId, id: c.estoqueBaseId });
+        if (eb) {
+          eb.quantidade = Math.max(0, eb.quantidade - totalConsumo);
+          eb.movimentacoes.push({
+            tipo: "saida", quantidade: totalConsumo,
+            descricao: `Complemento: ${item.quantidade}x ${c.nome} (${c.consumoQtd}${c.consumoUnidade})`,
+            pedidoId: item.id || "", data: new Date().toISOString()
+          });
+          await eb.save();
+        }
+      }
+      await c.save();
     }
   }
 }
@@ -530,10 +576,26 @@ async function _reporEstoque(empresaId, itens = []) {
 
     for (const comp of (item.complementos || [])) {
       const c = await Complemento.findOne({ empresaId, id: comp.id });
-      if (c && c.estoque !== "" && c.estoque !== undefined) {
+      if (!c) continue;
+      if (c.estoque !== "" && c.estoque !== undefined) {
         c.estoque = Number(c.estoque) + item.quantidade;
-        await c.save();
       }
+      // Repõe no Estoque-Base se configurado
+      if (c.usaEstoqueBase && c.estoqueBaseId && c.consumoQtd > 0) {
+        const fator = _converterFatorParaKgOuL(c.consumoQtd, c.consumoUnidade || "g");
+        const totalConsumo = fator * item.quantidade;
+        const eb = await EstoqueBase.findOne({ empresaId, id: c.estoqueBaseId });
+        if (eb) {
+          eb.quantidade += totalConsumo;
+          eb.movimentacoes.push({
+            tipo: "entrada", quantidade: totalConsumo,
+            descricao: `Cancelamento complemento: ${item.quantidade}x ${c.nome}`,
+            pedidoId: item.id || "", data: new Date().toISOString()
+          });
+          await eb.save();
+        }
+      }
+      await c.save();
     }
   }
 }

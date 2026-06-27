@@ -47,11 +47,12 @@
         <button class="adm-nav-btn ativo" data-sec="sec-dashboard">
           <span class="nav-icon">📊</span> Dashboard
         </button>
+
+         <button class="adm-nav-btn" data-sec="sec-categorias">
+          <span class="nav-icon">🏷️</span> Categorias
+        </button>
         <button class="adm-nav-btn" data-sec="sec-produtos">
           <span class="nav-icon">📦</span> Produtos
-        </button>
-        <button class="adm-nav-btn" data-sec="sec-categorias">
-          <span class="nav-icon">🏷️</span> Categorias
         </button>
         <button class="adm-nav-btn" data-sec="sec-complementos">
           <span class="nav-icon">📦</span> Estoque
@@ -236,23 +237,60 @@
                   <button type="button" id="btn-remover-imagem" style="display:none;margin-top:6px;font-size:12px;background:none;border:none;color:#e55;cursor:pointer;"
                     onclick="_removerImagemProduto()">✕ Remover imagem</button>
                 </div>
-                <div class="form-grupo">
+                <!-- <div class="form-grupo" hidden>
                   <label for="prod-emoji">Emoji (se não tiver imagem)</label>
                   <input type="text" id="prod-emoji" placeholder="🍇" maxlength="4">
-                </div>
+                </div> -->
                 <div class="form-grupo full">
                   <label for="prod-descricao">Descrição</label>
                   <textarea id="prod-descricao" rows="2" placeholder="Descreva o produto..."></textarea>
                 </div>
                 <div class="form-grupo full">
-                  <label for="prod-tamanhos">Tamanhos disponíveis (Ctrl+clique para múltiplos)</label>
-                  <select id="prod-tamanhos" multiple>
-                    <option value="PP">PP</option><option value="P">P</option>
-                    <option value="M">M</option><option value="G">G</option>
-                    <option value="GG">GG</option><option value="300ml">300ml</option>
-                    <option value="400ml">400ml</option><option value="500ml">500ml</option>
-                    <option value="700ml">700ml</option><option value="1L">1L</option>
-                  </select>
+                  <label>Tamanhos disponíveis (por volume)</label>
+                  <div id="prod-tamanhos-container" style="display:flex;flex-direction:column;gap:8px;background:rgba(91,45,142,.06);border-radius:10px;padding:12px;border:1px solid var(--border);">
+                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                      <input type="checkbox" id="sel-todos-tamanhos" style="width:auto;" onchange="toggleTodosTamanhos(this.checked)">
+                      <label for="sel-todos-tamanhos" style="margin:0;font-size:12px;cursor:pointer;">Adicionar todos os tamanhos</label>
+                    </div>
+                    <div style="border-top:1px solid var(--border);padding-top:8px;display:flex;flex-direction:column;gap:6px;">
+                      <div class="tamanho-row" style="display:flex;align-items:center;gap:10px;">
+                        <input type="checkbox" id="tam-200ml" name="prod-tamanho-check" value="200ml" style="width:auto;" onchange="toggleTamanhoPreco('200ml',this.checked)">
+                        <label for="tam-200ml" style="margin:0;width:52px;font-size:13px;cursor:pointer;">200 ml</label>
+                        <span style="font-size:12px;color:var(--text-muted);">R$</span>
+                        <input type="number" id="tam-preco-200ml" step="0.01" min="0" placeholder="0,00" style="width:90px;padding:4px 8px;font-size:13px;" disabled>
+                      </div>
+                      <div class="tamanho-row" style="display:flex;align-items:center;gap:10px;">
+                        <input type="checkbox" id="tam-300ml" name="prod-tamanho-check" value="300ml" style="width:auto;" onchange="toggleTamanhoPreco('300ml',this.checked)">
+                        <label for="tam-300ml" style="margin:0;width:52px;font-size:13px;cursor:pointer;">300 ml</label>
+                        <span style="font-size:12px;color:var(--text-muted);">R$</span>
+                        <input type="number" id="tam-preco-300ml" step="0.01" min="0" placeholder="0,00" style="width:90px;padding:4px 8px;font-size:13px;" disabled>
+                      </div>
+                      <div class="tamanho-row" style="display:flex;align-items:center;gap:10px;">
+                        <input type="checkbox" id="tam-400ml" name="prod-tamanho-check" value="400ml" style="width:auto;" onchange="toggleTamanhoPreco('400ml',this.checked)">
+                        <label for="tam-400ml" style="margin:0;width:52px;font-size:13px;cursor:pointer;">400 ml</label>
+                        <span style="font-size:12px;color:var(--text-muted);">R$</span>
+                        <input type="number" id="tam-preco-400ml" step="0.01" min="0" placeholder="0,00" style="width:90px;padding:4px 8px;font-size:13px;" disabled>
+                      </div>
+                      <div class="tamanho-row" style="display:flex;align-items:center;gap:10px;">
+                        <input type="checkbox" id="tam-500ml" name="prod-tamanho-check" value="500ml" style="width:auto;" onchange="toggleTamanhoPreco('500ml',this.checked)">
+                        <label for="tam-500ml" style="margin:0;width:52px;font-size:13px;cursor:pointer;">500 ml</label>
+                        <span style="font-size:12px;color:var(--text-muted);">R$</span>
+                        <input type="number" id="tam-preco-500ml" step="0.01" min="0" placeholder="0,00" style="width:90px;padding:4px 8px;font-size:13px;" disabled>
+                      </div>
+                      <div class="tamanho-row" style="display:flex;align-items:center;gap:10px;">
+                        <input type="checkbox" id="tam-700ml" name="prod-tamanho-check" value="700ml" style="width:auto;" onchange="toggleTamanhoPreco('700ml',this.checked)">
+                        <label for="tam-700ml" style="margin:0;width:52px;font-size:13px;cursor:pointer;">700 ml</label>
+                        <span style="font-size:12px;color:var(--text-muted);">R$</span>
+                        <input type="number" id="tam-preco-700ml" step="0.01" min="0" placeholder="0,00" style="width:90px;padding:4px 8px;font-size:13px;" disabled>
+                      </div>
+                      <div class="tamanho-row" style="display:flex;align-items:center;gap:10px;">
+                        <input type="checkbox" id="tam-1L" name="prod-tamanho-check" value="1L" style="width:auto;" onchange="toggleTamanhoPreco('1L',this.checked)">
+                        <label for="tam-1L" style="margin:0;width:52px;font-size:13px;cursor:pointer;">1 L</label>
+                        <span style="font-size:12px;color:var(--text-muted);">R$</span>
+                        <input type="number" id="tam-preco-1L" step="0.01" min="0" placeholder="0,00" style="width:90px;padding:4px 8px;font-size:13px;" disabled>
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 <div class="form-grupo full">
                   <label>
@@ -345,7 +383,7 @@
               <div class="form-grid">
                 <div class="form-grupo">
                   <label for="comp-nome">Nome *</label>
-                  <input type="text" id="comp-nome" placeholder="Ex: Nutella" required>
+                  <input type="text" id="comp-nome" placeholder="Ex: Sucrilhos" required>
                 </div>
                 <div class="form-grupo">
                   <label for="comp-preco">Preço adicional (R$)</label>
@@ -354,6 +392,35 @@
                 <div class="form-grupo">
                   <label for="comp-estoque">Estoque</label>
                   <input type="number" id="comp-estoque" min="0" placeholder="Deixe vazio = ilimitado">
+                </div>
+              </div>
+              <!-- Desconto de Estoque-Base -->
+              <div style="margin-top:14px;padding:14px;background:rgba(91,45,142,.08);border-radius:10px;border:1px solid rgba(91,45,142,.2);">
+                <label style="display:flex;align-items:center;gap:8px;font-weight:600;cursor:pointer;">
+                  <input type="checkbox" id="comp-usa-estoque-base" style="width:auto;" onchange="toggleCompEstoqueBase(this.checked)">
+                  Descontar do Estoque-Base ao vender
+                </label>
+                <div id="comp-estoque-base-config" style="display:none;margin-top:12px;">
+                  <div class="form-grid">
+                    <div class="form-grupo">
+                      <label for="comp-estoque-base-id">Estoque-Base vinculado</label>
+                      <select id="comp-estoque-base-id">
+                        <option value="">Selecione...</option>
+                      </select>
+                    </div>
+                    <div class="form-grupo">
+                      <label for="comp-consumo-qtd">Quantidade consumida</label>
+                      <input type="number" id="comp-consumo-qtd" step="0.01" min="0" placeholder="Ex: 0.50 grama, 1.0 quilo, 0.50 ml">
+                    </div>
+                    <div class="form-grupo">
+                      <label for="comp-consumo-unidade">Unidade</label>
+                      <select id="comp-consumo-unidade">
+                        <option value="g">Grama (g)</option>
+                        <option value="kg">Quilo (kg)</option>
+                        <option value="ml">Mililitro (ml)</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div class="form-acoes">
@@ -449,12 +516,42 @@
                 <input type="text" id="cfg-logo" maxlength="4" placeholder="🍇">
               </div>
               <div class="form-grupo">
-                <label for="cfg-logoUrl">Logo (URL da imagem)</label>
-                <input type="url" id="cfg-logoUrl" placeholder="https://...">
+                <label>Logo (imagem)</label>
+                <div id="upload-logo-area" style="border:2px dashed var(--primary,#5B2D8E);border-radius:10px;padding:12px;text-align:center;cursor:pointer;transition:background .2s;"
+                  onclick="document.getElementById('cfg-logoUrl-file').click()"
+                  ondragover="event.preventDefault();this.style.background='rgba(91,45,142,.15)'"
+                  ondragleave="this.style.background=''"
+                  ondrop="_handleLogoUrlDrop(event)">
+                  <div id="upload-logo-preview" style="display:none;margin-bottom:6px;">
+                    <img id="upload-logo-preview-img" style="max-height:70px;border-radius:8px;object-fit:contain;" alt="logo preview">
+                  </div>
+                  <div id="upload-logo-placeholder">
+                    <div style="font-size:22px;">🖼️</div>
+                    <div style="font-size:12px;color:var(--text-muted,#aaa);margin-top:2px;">Arraste ou clique para selecionar</div>
+                  </div>
+                  <input type="file" id="cfg-logoUrl-file" accept="image/jpeg,image/png,image/webp" style="display:none" onchange="_handleLogoUrlSelect(this)">
+                </div>
+                <input type="hidden" id="cfg-logoUrl">
+                <button type="button" style="display:none;font-size:11px;background:none;border:none;color:#e55;cursor:pointer;margin-top:4px;" id="btn-remover-logo" onclick="_removerLogoUrl()">✕ Remover logo</button>
               </div>
               <div class="form-grupo full">
-                <label for="cfg-banner">URL do Banner</label>
-                <input type="url" id="cfg-banner" placeholder="https://...">
+                <label>URL do Banner</label>
+                <div id="upload-banner-area" style="border:2px dashed var(--primary,#5B2D8E);border-radius:10px;padding:12px;text-align:center;cursor:pointer;transition:background .2s;"
+                  onclick="document.getElementById('cfg-banner-file').click()"
+                  ondragover="event.preventDefault();this.style.background='rgba(91,45,142,.15)'"
+                  ondragleave="this.style.background=''"
+                  ondrop="_handleBannerDrop(event)">
+                  <div id="upload-banner-preview" style="display:none;margin-bottom:6px;">
+                    <img id="upload-banner-preview-img" style="max-height:80px;width:100%;border-radius:8px;object-fit:cover;" alt="banner preview">
+                  </div>
+                  <div id="upload-banner-placeholder">
+                    <div style="font-size:22px;">🏞️</div>
+                    <div style="font-size:12px;color:var(--text-muted,#aaa);margin-top:2px;">Arraste ou clique para selecionar o banner</div>
+                  </div>
+                  <input type="file" id="cfg-banner-file" accept="image/jpeg,image/png,image/webp" style="display:none" onchange="_handleBannerSelect(this)">
+                </div>
+                <input type="hidden" id="cfg-banner">
+                <button type="button" style="display:none;font-size:11px;background:none;border:none;color:#e55;cursor:pointer;margin-top:4px;" id="btn-remover-banner" onclick="_removerBanner()">✕ Remover banner</button>
               </div>
             </div>
           </div>
@@ -890,6 +987,104 @@
     }
     window._preencherPreviewImagem = _preencherPreviewImagem;
 
+    // ── UPLOAD LOGO ────────────────────────────────────────────
+    function _handleLogoUrlSelect(input) { if (input.files[0]) _processarLogoUrl(input.files[0]); }
+    function _handleLogoUrlDrop(event) {
+      event.preventDefault();
+      document.getElementById("upload-logo-area").style.background = "";
+      if (event.dataTransfer.files[0]) _processarLogoUrl(event.dataTransfer.files[0]);
+    }
+    function _processarLogoUrl(file) {
+      if (!["image/jpeg","image/png","image/webp"].includes(file.type)) { alert("❌ Use JPG, PNG ou WEBP."); return; }
+      if (file.size > 5*1024*1024) { alert("❌ Máximo 5MB."); return; }
+      const r = new FileReader();
+      r.onload = e => {
+        document.getElementById("cfg-logoUrl").value = e.target.result;
+        document.getElementById("upload-logo-preview-img").src = e.target.result;
+        document.getElementById("upload-logo-preview").style.display = "block";
+        document.getElementById("upload-logo-placeholder").style.display = "none";
+        document.getElementById("btn-remover-logo").style.display = "block";
+      };
+      r.readAsDataURL(file);
+    }
+    function _removerLogoUrl() {
+      document.getElementById("cfg-logoUrl").value = "";
+      document.getElementById("cfg-logoUrl-file").value = "";
+      document.getElementById("upload-logo-preview").style.display = "none";
+      document.getElementById("upload-logo-placeholder").style.display = "block";
+      document.getElementById("btn-remover-logo").style.display = "none";
+    }
+    function _preencherLogoUrl(url) {
+      if (!url) { _removerLogoUrl(); return; }
+      document.getElementById("cfg-logoUrl").value = url;
+      document.getElementById("upload-logo-preview-img").src = url;
+      document.getElementById("upload-logo-preview").style.display = "block";
+      document.getElementById("upload-logo-placeholder").style.display = "none";
+      document.getElementById("btn-remover-logo").style.display = "block";
+    }
+    window._removerLogoUrl = _removerLogoUrl;
+    window._handleLogoUrlSelect = _handleLogoUrlSelect;
+    window._handleLogoUrlDrop = _handleLogoUrlDrop;
+
+    // ── TAMANHOS COM PREÇO ─────────────────────────────────
+    window.toggleTamanhoPreco = function(v, ativo) {
+      const inp = document.getElementById("tam-preco-" + v);
+      if (inp) { inp.disabled = !ativo; if (!ativo) inp.value = ""; }
+      // Sincronizar "todos" checkbox
+      const checks = document.querySelectorAll('input[name="prod-tamanho-check"]');
+      const todos  = document.getElementById("sel-todos-tamanhos");
+      if (todos) todos.checked = [...checks].every(c => c.checked);
+    };
+    window.toggleTodosTamanhos = function(ativo) {
+      const VOLS = ["200ml","300ml","400ml","500ml","700ml","1L"];
+      VOLS.forEach(v => {
+        const cb  = document.getElementById("tam-" + v);
+        const inp = document.getElementById("tam-preco-" + v);
+        if (cb)  cb.checked  = ativo;
+        if (inp) inp.disabled = !ativo;
+        if (inp && !ativo) inp.value = "";
+      });
+    };
+
+    // ── UPLOAD BANNER ──────────────────────────────────────────
+    function _handleBannerSelect(input) { if (input.files[0]) _processarBanner(input.files[0]); }
+    function _handleBannerDrop(event) {
+      event.preventDefault();
+      document.getElementById("upload-banner-area").style.background = "";
+      if (event.dataTransfer.files[0]) _processarBanner(event.dataTransfer.files[0]);
+    }
+    function _processarBanner(file) {
+      if (!["image/jpeg","image/png","image/webp"].includes(file.type)) { alert("❌ Use JPG, PNG ou WEBP."); return; }
+      if (file.size > 5*1024*1024) { alert("❌ Máximo 5MB."); return; }
+      const r = new FileReader();
+      r.onload = e => {
+        document.getElementById("cfg-banner").value = e.target.result;
+        document.getElementById("upload-banner-preview-img").src = e.target.result;
+        document.getElementById("upload-banner-preview").style.display = "block";
+        document.getElementById("upload-banner-placeholder").style.display = "none";
+        document.getElementById("btn-remover-banner").style.display = "block";
+      };
+      r.readAsDataURL(file);
+    }
+    function _removerBanner() {
+      document.getElementById("cfg-banner").value = "";
+      document.getElementById("cfg-banner-file").value = "";
+      document.getElementById("upload-banner-preview").style.display = "none";
+      document.getElementById("upload-banner-placeholder").style.display = "block";
+      document.getElementById("btn-remover-banner").style.display = "none";
+    }
+    function _preencherBanner(url) {
+      if (!url) { _removerBanner(); return; }
+      document.getElementById("cfg-banner").value = url;
+      document.getElementById("upload-banner-preview-img").src = url;
+      document.getElementById("upload-banner-preview").style.display = "block";
+      document.getElementById("upload-banner-placeholder").style.display = "none";
+      document.getElementById("btn-remover-banner").style.display = "block";
+    }
+    window._removerBanner = _removerBanner;
+    window._handleBannerSelect = _handleBannerSelect;
+    window._handleBannerDrop = _handleBannerDrop;
+
     // ============================================================
     // ESTOQUE-BASE — funções do formulário de produto
     // ============================================================
@@ -960,17 +1155,23 @@
           ${lista.length === 0
             ? `<p class="sem-dados">Nenhum estoque-base cadastrado. Crie um ao adicionar um produto por peso.</p>`
             : lista.map(eb => {
-                // Produtos vinculados a este estoque-base
+                // Produtos e complementos vinculados a este estoque-base
                 const produtos = (STATE.get("produtos") || []).filter(p => p.estoqueBaseId === eb.id);
-                const alerta   = eb.quantidade <= 1 ? `<span class="badge-danger">⚠️ Baixo</span>` : "";
+                const complementos = (STATE.get("complementos") || []).filter(c => c.estoqueBaseId === eb.id);
+                const totalVinculados = produtos.length + complementos.length;
+                const nomesVinculados = [
+                  ...produtos.map(p => p.nome),
+                  ...complementos.map(c => "🧁 " + c.nome)
+                ];
+                const alerta = eb.quantidade <= 1 ? `<span class="badge-danger">⚠️ Baixo</span>` : "";
                 return `
                   <div class="adm-item">
                     <div class="adm-item-info">
                       <strong>${eb.nome} ${alerta}</strong>
                       <small>
                         Disponível: <strong>${eb.quantidade.toFixed(3)} ${eb.unidade}</strong>
-                        | Produtos vinculados: ${produtos.length}
-                        ${produtos.length ? `(${produtos.map(p=>p.nome).join(", ")})` : ""}
+                        | Vinculados: ${totalVinculados}
+                        ${totalVinculados ? `(${nomesVinculados.join(", ")})` : ""}
                       </small>
                     </div>
                     <div class="adm-item-acoes" style="gap:8px;flex-wrap:wrap;">
@@ -1016,11 +1217,11 @@
               <td>${m.quantidade?.toFixed(3)} ${eb.unidade}</td>
               <td>${m.descricao || "-"}</td>
             </tr>`).join("")
-        : `<tr><td colspan="4" style="text-align:center;color:#aaa">Sem movimentações</td></tr>`;
+        : `<tr><td colspan="4" style="text-align:center;color:var(--text-muted)">Sem movimentações</td></tr>`;
 
       MODAL.abrir(`
         <h3>📋 Histórico — ${eb.nome}</h3>
-        <p style="color:#aaa;margin-bottom:12px;">Últimas 20 movimentações</p>
+        <p style="color:var(--text-muted);margin-bottom:12px;">Últimas 20 movimentações</p>
         <div style="overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;font-size:13px;">
             <thead><tr style="text-align:left;border-bottom:1px solid #333;">

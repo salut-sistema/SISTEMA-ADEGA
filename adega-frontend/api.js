@@ -235,6 +235,10 @@ function _patchStorage() {
         funcionamento: CONFIG.funcionamento, delivery: CONFIG.delivery,
         pagamento: CONFIG.pagamento,
       });
+      // Aplica cores imediatamente após salvar
+      if (typeof UTIL !== "undefined" && typeof UTIL.aplicarCores === "function") {
+        UTIL.aplicarCores();
+      }
       MODAL.toast("Configurações salvas! ✅");
     } catch(e) { console.error("Erro ao salvar config:", e.message); }
   };
@@ -244,8 +248,32 @@ function _patchStorage() {
   const _pe = PRODUTOS.editar.bind(PRODUTOS);
   const _px = PRODUTOS.excluir.bind(PRODUTOS);
   const _pp = PRODUTOS.pausar.bind(PRODUTOS);
-  PRODUTOS.criar   = async (d)    => { const p = _pc(d);  try { await API_PRODUTOS.criar(p); }    catch(e){console.error(e.message);} return p; };
-  PRODUTOS.editar  = async (id,d) => { _pe(id,d);          try { await API_PRODUTOS.editar(id,d); } catch(e){console.error(e.message);} };
+  PRODUTOS.criar   = async (d) => {
+    const p = _pc(d);
+    try {
+      await API_PRODUTOS.criar({ ...p, ativo: true });
+      const lista = await API_PRODUTOS.listar();
+      if (lista) {
+        STATE.set("produtos", lista);
+        if (typeof renderizarAdmProdutos === "function") renderizarAdmProdutos();
+      }
+    } catch(e) {
+      console.error("ERRO ao criar produto no backend:", e.message);
+      MODAL.erro("Erro ao salvar produto: " + e.message);
+    }
+    return p;
+  };
+  PRODUTOS.editar  = async (id,d) => {
+    _pe(id,d);
+    try {
+      await API_PRODUTOS.editar(id,d);
+      const lista = await API_PRODUTOS.listar();
+      if (lista) STATE.set("produtos", lista);
+    } catch(e) {
+      console.error("ERRO ao editar produto no backend:", e.message);
+      MODAL.erro("Erro ao editar produto: " + e.message);
+    }
+  };
   PRODUTOS.excluir = async (id)   => { _px(id);            try { await API_PRODUTOS.excluir(id); }  catch(e){console.error(e.message);} };
   PRODUTOS.pausar  = async (id)   => { _pp(id);            try { await API_PRODUTOS.pausar(id); }   catch(e){console.error(e.message);} };
 
@@ -404,13 +432,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       // Carrega dados públicos da loja pelo slug
       const loja = await API_LOJA.carregar(slug);
-      STATE.set("produtos",     loja.produtos   || []);
-      STATE.set("categorias",   loja.categorias || []);
-      STATE.set("complementos", []);
+      STATE.set("produtos",     loja.produtos     || []);
+      STATE.set("categorias",   loja.categorias   || []);
+      STATE.set("complementos", loja.complementos || []);
       STATE.set("pedidos",      []);
       _aplicarConfig(loja.config);
-      UTIL.aplicarCores();
+      if (typeof UTIL !== "undefined") UTIL.aplicarCores();
       if (typeof renderizarCatalogo === "function") renderizarCatalogo();
+      // Reaplicar cores após renderizar (garante que elementos dinâmicos recebam)
+      setTimeout(() => { if (typeof UTIL !== "undefined") UTIL.aplicarCores(); }, 100);
 
       // Aplica configurações de entrega/retirada
       const opcEntrega  = document.getElementById("opc-entrega");
