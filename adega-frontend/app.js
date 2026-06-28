@@ -227,7 +227,7 @@ const UTIL = {
       body, body * { color: inherit !important; }
       body { color: ${tx} !important; }
       .badge-danger  { color: #fff !important; background:#e55 !important; }
-      .badge-warning { color: #ec7070 !important; }
+      .badge-warning { color: #f59797 !important; }
       .badge-success { color: #fff !important; background:#2ecc71 !important; }
       .btn-primary   { color: #fff !important; }
       .btn-danger    { color: #fff !important; }
@@ -442,14 +442,17 @@ const CARRINHO = {
   _atualizarTotais() {
     const subtotal = this.total();
     const tipoEntrega = document.querySelector('input[name="tipo-entrega"]:checked')?.value || ENUMS.TIPO_ENTREGA.RETIRADA;
-    const taxa = tipoEntrega === ENUMS.TIPO_ENTREGA.ENTREGA && CONFIG.delivery.entregaAtiva
-      ? CONFIG.delivery.taxaEntrega : 0;
-    const total = subtotal + taxa;
+    const taxaCadastrada = CONFIG.delivery.taxaEntrega || 0;
+    const isEntrega = tipoEntrega === ENUMS.TIPO_ENTREGA.ENTREGA && CONFIG.delivery.entregaAtiva;
+    // Na entrega: cobra a taxa. Na retirada: exibe o valor informativo mas não soma ao total.
+    const taxaCobrada = isEntrega ? taxaCadastrada : 0;
+    const total = subtotal + taxaCobrada;
     const elSub = document.getElementById("carrinho-subtotal");
     const elTaxa = document.getElementById("carrinho-taxa");
     const elTotal = document.getElementById("carrinho-total");
     if (elSub) elSub.textContent = UTIL.formatarMoeda(subtotal);
-    if (elTaxa) elTaxa.textContent = taxa > 0 ? UTIL.formatarMoeda(taxa) : "Grátis";
+    // Sempre exibe o valor cadastrado (informativo); na retirada não é cobrado
+    if (elTaxa) elTaxa.textContent = taxaCadastrada > 0 ? UTIL.formatarMoeda(taxaCadastrada) : "Grátis";
     if (elTotal) elTotal.textContent = UTIL.formatarMoeda(total);
   },
 };
@@ -1317,13 +1320,27 @@ function excluirProduto(id) {
 }
 window.excluirProduto = excluirProduto;
 
+// Variável temporária para guardar o produto em edição durante a troca de aba
+let _produtoEmEdicao = null;
+
 function editarProduto(id) {
   const p = STATE.get("produtos").find(x => x.id === id);
   if (!p) return;
-  preencherFormProduto(p);
+
+  // Guarda o produto para que o tabchange possa reaplicar os acompanhamentos
+  _produtoEmEdicao = p;
+
+  // Navega para a aba de edição (isso dispara tabchange → popularComplementosProd)
   TABS.ir("sec-produtos", "tab-novo-produto");
-  document.getElementById("form-produto-titulo").textContent = "Editar Produto";
-  document.getElementById("form-produto-id").value = id;
+
+  // Preenche o formulário DEPOIS da troca de aba, garantindo que os selects
+  // de categoria e os checkboxes de acompanhamentos já existam no DOM
+  setTimeout(() => {
+    preencherFormProduto(p);
+    document.getElementById("form-produto-titulo").textContent = "Editar Produto";
+    document.getElementById("form-produto-id").value = id;
+    _produtoEmEdicao = null;
+  }, 80);
 }
 window.editarProduto = editarProduto;
 
@@ -2110,27 +2127,41 @@ function bindFormProduto() {
       consumoPorVenda:  parseFloat(g("prod-consumo-por-venda")) || 0,
     };
     if (!dados.nome || !dados.preco) { MODAL.erro(ENUMS.MSGS.CAMPO_OBRIGATORIO); return; }
-    if (id) { PRODUTOS.editar(id, dados); } else { PRODUTOS.criar(dados); }
-    form.reset();
-    document.getElementById("form-produto-id").value = "";
-    document.getElementById("form-produto-titulo").textContent = "Novo Produto";
-    document.getElementById("prod-complementos-area").style.display = "none";
-    // Limpa campos de estoque-base
-    document.getElementById("config-estoque-base").style.display = "none";
-    document.getElementById("prod-usa-estoque-base").checked = false;
-    // Limpa tamanhos
-    ["200ml","300ml","400ml","500ml","700ml","1L"].forEach(v => {
-      const cb  = document.getElementById("tam-" + v);
-      const inp = document.getElementById("tam-preco-" + v);
-      if (cb)  cb.checked = false;
-      if (inp) { inp.value = ""; inp.disabled = true; }
-    });
-    const todosEl = document.getElementById("sel-todos-tamanhos");
-    if (todosEl) todosEl.checked = false;
-    // Limpa preview de imagem
-    if (typeof _removerImagemProduto === "function") _removerImagemProduto();
-    TABS.ir("sec-produtos", "tab-produtos-lista");
-    MODAL.sucesso(ENUMS.MSGS.PRODUTO_SALVO);
+
+    function _limparFormularioProduto() {
+      form.reset();
+      document.getElementById("form-produto-id").value = "";
+      document.getElementById("form-produto-titulo").textContent = "Novo Produto";
+      document.getElementById("prod-complementos-area").style.display = "none";
+      // Limpa campos de estoque-base
+      document.getElementById("config-estoque-base").style.display = "none";
+      document.getElementById("prod-usa-estoque-base").checked = false;
+      // Limpa tamanhos
+      ["200ml","300ml","400ml","500ml","700ml","1L"].forEach(v => {
+        const cb  = document.getElementById("tam-" + v);
+        const inp = document.getElementById("tam-preco-" + v);
+        if (cb)  cb.checked = false;
+        if (inp) { inp.value = ""; inp.disabled = true; }
+      });
+      const todosEl = document.getElementById("sel-todos-tamanhos");
+      if (todosEl) todosEl.checked = false;
+      // Limpa preview de imagem
+      if (typeof _removerImagemProduto === "function") _removerImagemProduto();
+      TABS.ir("sec-produtos", "tab-produtos-lista");
+      MODAL.sucesso(ENUMS.MSGS.PRODUTO_SALVO);
+    }
+
+    if (id) {
+      // Edição: aguarda confirmação do servidor antes de limpar o formulário
+      PRODUTOS.editar(id, dados).then(() => {
+        _limparFormularioProduto();
+      }).catch(() => {
+        // O erro já é exibido dentro de PRODUTOS.editar
+      });
+    } else {
+      PRODUTOS.criar(dados);
+      _limparFormularioProduto();
+    }
   });
   document.getElementById("prod-tem-complementos")?.addEventListener("change", e => {
     document.getElementById("prod-complementos-area").style.display = e.target.checked ? "block" : "none";

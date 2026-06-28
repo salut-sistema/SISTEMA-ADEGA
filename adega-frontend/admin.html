@@ -47,12 +47,11 @@
         <button class="adm-nav-btn ativo" data-sec="sec-dashboard">
           <span class="nav-icon">📊</span> Dashboard
         </button>
-
-         <button class="adm-nav-btn" data-sec="sec-categorias">
-          <span class="nav-icon">🏷️</span> Categorias
-        </button>
         <button class="adm-nav-btn" data-sec="sec-produtos">
           <span class="nav-icon">📦</span> Produtos
+        </button>
+        <button class="adm-nav-btn" data-sec="sec-categorias">
+          <span class="nav-icon">🏷️</span> Categorias
         </button>
         <button class="adm-nav-btn" data-sec="sec-complementos">
           <span class="nav-icon">📦</span> Estoque
@@ -237,10 +236,10 @@
                   <button type="button" id="btn-remover-imagem" style="display:none;margin-top:6px;font-size:12px;background:none;border:none;color:#e55;cursor:pointer;"
                     onclick="_removerImagemProduto()">✕ Remover imagem</button>
                 </div>
-                <!-- <div class="form-grupo" hidden>
+                <div class="form-grupo">
                   <label for="prod-emoji">Emoji (se não tiver imagem)</label>
                   <input type="text" id="prod-emoji" placeholder="🍇" maxlength="4">
-                </div> -->
+                </div>
                 <div class="form-grupo full">
                   <label for="prod-descricao">Descrição</label>
                   <textarea id="prod-descricao" rows="2" placeholder="Descreva o produto..."></textarea>
@@ -791,6 +790,18 @@
       document.getElementById("form-produto-id").value = "";
       document.getElementById("form-produto-titulo").textContent = "Novo Produto";
       document.getElementById("prod-complementos-area").style.display = "none";
+      // Limpa preview de imagem
+      if (typeof _removerImagemProduto === "function") _removerImagemProduto();
+      // Desabilita e zera todos os campos de preco dos tamanhos
+      ["200ml","300ml","400ml","500ml","700ml","1L"].forEach(function(v) {
+        var inp = document.getElementById("tam-preco-" + v);
+        if (inp) { inp.disabled = true; inp.value = ""; }
+      });
+      // Esconde configuracao de estoque-base
+      var cfgBase = document.getElementById("config-estoque-base");
+      if (cfgBase) cfgBase.style.display = "none";
+      var estInput = document.getElementById("prod-estoque");
+      if (estInput) estInput.disabled = false;
     }
     window.resetarFormProduto = resetarFormProduto;
 

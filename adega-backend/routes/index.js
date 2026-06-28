@@ -29,7 +29,7 @@ router.post("/login", (req, res) => {
 
   // Token = base64(login:senha) — compatível com Basic Auth
   const token = Buffer.from(`${empresa.login}:${empresa.senha}`).toString("base64");
-  ok(res, { token, empresaId: empresa.empresaId, nome: empresa.nome, slug: empresa.slug });
+  ok(res, { token, empresaId: empresa.empresaId, nome: empresa.nome, slug: empresa.slug, endereco: empresa.endereco || "" });
 });
 
 // GET /api/loja/:slug — carrega dados públicos da loja pelo slug
@@ -45,7 +45,7 @@ router.get("/loja/:slug", async (req, res) => {
       Complemento.find({ empresaId: empresa.empresaId, ativo: true }).lean(),
     ]);
 
-    ok(res, { empresaId: empresa.empresaId, nome: empresa.nome, slug: empresa.slug, config: config || {}, categorias, produtos, complementos });
+    ok(res, { empresaId: empresa.empresaId, nome: empresa.nome, slug: empresa.slug, endereco: empresa.endereco || "", config: config || {}, categorias, produtos, complementos });
   } catch (e) { err(res, e.message); }
 });
 
@@ -99,12 +99,16 @@ router.post("/produtos", async (req, res) => {
 // PUT /api/produtos/:id — edita produto existente
 router.put("/produtos/:id", async (req, res) => {
   try {
+    // Normaliza tamanhos: aceita string[] ou {volume,preco}[]
     const tamanhos = (req.body.tamanhos || []).map(t =>
-      typeof t === "string" ? { volume: t, preco: 0 } : t
+      typeof t === "string" ? { volume: t, preco: 0 } : { volume: String(t.volume || ""), preco: Number(t.preco) || 0 }
     );
+    // Monta objeto de atualização sem sobrescrever campo ativo
+    const { ativo, tamanhos: _t, ...resto } = req.body;
+    const update = { $set: { ...resto, tamanhos } };
     const p = await Produto.findOneAndUpdate(
       { empresaId: req.empresaId, id: req.params.id },
-      { ...req.body, tamanhos },
+      update,
       { new: true }
     );
     if (!p) return err(res, "Produto não encontrado", 404);
@@ -509,8 +513,9 @@ async function _descontarEstoque(empresaId, itens = []) {
       prod.estoque = Math.max(0, Number(prod.estoque) - item.quantidade);
     }
 
-    // Pausa automática se estoque zerou
-    if (!prod.usaEstoqueBase && Number(prod.estoque) <= 0 && prod.ativo) {
+    // Pausa automática se estoque zerou (ignora estoque vazio = infinito)
+    const estoqueFinito = prod.estoque !== "" && prod.estoque !== null && prod.estoque !== undefined;
+    if (!prod.usaEstoqueBase && estoqueFinito && Number(prod.estoque) <= 0 && prod.ativo) {
       prod.ativo = false;
     }
 

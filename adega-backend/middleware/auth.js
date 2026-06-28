@@ -8,8 +8,12 @@ const EMPRESAS = require("../empresas.config");
 function empresaValida(empresa) {
   if (!empresa.ativo) return false;
   if (empresa.vencimento) {
-    const hoje = new Date().toISOString().split("T")[0];
-    if (hoje > empresa.vencimento) return false;
+    // Compara datas usando Date para evitar problemas de fuso horário
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const venc = new Date(empresa.vencimento + "T00:00:00");
+    // Bloqueia se hoje é APÓS o dia de vencimento (vencimento = último dia de acesso)
+    if (hoje > venc) return false;
   }
   return true;
 }
