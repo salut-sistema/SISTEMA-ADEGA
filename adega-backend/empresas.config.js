@@ -27,7 +27,7 @@ const EMPRESAS = [
     ativo:      true,                        // false = acesso bloqueado
     vencimento: null,                        // "2025-12-31" ou null = sem vencimento
     endereco:   "Rua Francisco Luiz de Oliveira, nº 52", // endereço da empresa
-    slug:       "kleber-adega",              // link exclusivo: /loja/kleber-adega
+    slug:       "kleber-Demostração",              // link exclusivo: /loja/kleber-adega
   },
 
   // ── EMPRESA 1 ─────────────────────────────────────────────
