@@ -65,6 +65,17 @@ const EMPRESAS = [
     slug:       "bomboniere-maria",          // link exclusivo: /loja/bomboniere-maria
   },
 
+  {
+    empresaId:  "mari-1",
+    nome:       "mari",
+    login:      "mari",
+    senha:      "mari",
+    ativo:      true,
+    vencimento: null,
+    endereco:   "",                          // endereço da empresa
+    slug:       "mariele",          // link exclusivo: /loja/bomboniere-maria
+  },
+
 
   // ── TEMPLATE PARA NOVA EMPRESA (copie e preencha) ─────────
   // {
