@@ -29,7 +29,8 @@ router.post("/login", (req, res) => {
 
   // Token = base64(login:senha) — compatível com Basic Auth
   const token = Buffer.from(`${empresa.login}:${empresa.senha}`).toString("base64");
-  ok(res, { token, empresaId: empresa.empresaId, nome: empresa.nome, slug: empresa.slug, endereco: empresa.endereco || "" });
+  // "vencimento" alimenta o card "Aviso de Assinatura" do menu lateral no painel admin
+  ok(res, { token, empresaId: empresa.empresaId, nome: empresa.nome, slug: empresa.slug, endereco: empresa.endereco || "", vencimento: empresa.vencimento || null });
 });
 
 // GET /api/loja/:slug — carrega dados públicos da loja pelo slug

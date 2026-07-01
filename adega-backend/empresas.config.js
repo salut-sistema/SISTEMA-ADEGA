@@ -44,14 +44,14 @@ const EMPRESAS = [
 
   // ── EMPRESA 2 ─────────────────────────────────────────────
   {
-    empresaId:  "bombo-001",
-    nome:       "Bomboniere da Maria",
-    login:      "bombo001",
-    senha:      "bombo001@2025",
+    empresaId:  "rhuan-001",
+    nome:       "rhuan",
+    login:      "rhuan",
+    senha:      "rhuan",
     ativo:      true,
     vencimento: null,
     endereco:   "",                          // endereço da empresa
-    slug:       "bomboniere-maria",          // link exclusivo: /loja/bomboniere-maria
+    slug:       "rhuan",          // link exclusivo: /loja/bomboniere-maria
   },
 
   {
@@ -60,7 +60,7 @@ const EMPRESAS = [
     login:      "ma",
     senha:      "ma",
     ativo:      true,
-    vencimento: "2025-12-31",
+    vencimento: "2026-07-01",
     endereco:   "",                          // endereço da empresa
     slug:       "bomboniere-maria",          // link exclusivo: /loja/bomboniere-maria
   },
@@ -71,7 +71,7 @@ const EMPRESAS = [
     login:      "mari",
     senha:      "mari",
     ativo:      true,
-    vencimento: null,
+    vencimento: "2026-07-02",
     endereco:   "",                          // endereço da empresa
     slug:       "mariele",          // link exclusivo: /loja/bomboniere-maria
   },

@@ -24,18 +24,22 @@ const API_BASE = window.location.hostname === "127.0.0.1" || window.location.hos
 
 // ── Gerenciamento de sessão da empresa ───────────────────────
 const AUTH = {
-  salvar(token, empresaId, nome, slug) {
+  salvar(token, empresaId, nome, slug, vencimento) {
     sessionStorage.setItem("empresa_token", token);
     sessionStorage.setItem("empresa_id",    empresaId);
     sessionStorage.setItem("empresa_nome",  nome);
     sessionStorage.setItem("empresa_slug",  slug);
+    // "vencimento" alimenta o card "Aviso de Assinatura" do menu lateral (ver assinatura.js)
+    if (vencimento) sessionStorage.setItem("empresa_vencimento", vencimento);
+    else sessionStorage.removeItem("empresa_vencimento");
   },
-  token()     { return sessionStorage.getItem("empresa_token"); },
-  empresaId() { return sessionStorage.getItem("empresa_id"); },
-  nome()      { return sessionStorage.getItem("empresa_nome"); },
-  slug()      { return sessionStorage.getItem("empresa_slug"); },
-  logado()    { return !!this.token(); },
-  limpar()    { ["empresa_token","empresa_id","empresa_nome","empresa_slug"].forEach(k => sessionStorage.removeItem(k)); },
+  token()      { return sessionStorage.getItem("empresa_token"); },
+  empresaId()  { return sessionStorage.getItem("empresa_id"); },
+  nome()       { return sessionStorage.getItem("empresa_nome"); },
+  slug()       { return sessionStorage.getItem("empresa_slug"); },
+  vencimento() { return sessionStorage.getItem("empresa_vencimento"); },
+  logado()     { return !!this.token(); },
+  limpar()     { ["empresa_token","empresa_id","empresa_nome","empresa_slug","empresa_vencimento"].forEach(k => sessionStorage.removeItem(k)); },
 };
 
 // ── Fetch genérico com tratamento de erro ────────────────────
@@ -356,12 +360,14 @@ async function fazerLogin() {
 
   try {
     const dados = await API_AUTH.login(loginVal, senhaVal);
-    AUTH.salvar(dados.token, dados.empresaId, dados.nome, dados.slug);
+    AUTH.salvar(dados.token, dados.empresaId, dados.nome, dados.slug, dados.vencimento);
     STATE.set("adminLogado", true);
     document.getElementById("login-overlay")?.classList.remove("active");
     if (erroEl) erroEl.style.display = "none";
     const nomeEl = document.getElementById("adm-loja-nome");
     if (nomeEl) nomeEl.textContent = dados.nome;
+    // Atualiza o card "Aviso de Assinatura" do menu lateral (ver assinatura.js)
+    window.AVISO_ASSINATURA?.atualizar();
     await _carregarDadosAdmin();
   } catch(e) {
     if (erroEl) {
@@ -392,6 +398,9 @@ function fazerLogout() {
   const erroEl = document.getElementById("login-erro");
   if (erroEl) erroEl.style.display = "none";
   document.getElementById("link-loja-banner")?.remove();
+  // Esconde o card "Aviso de Assinatura" ao sair (ver assinatura.js)
+  const avisoEl = document.getElementById("aviso-assinatura");
+  if (avisoEl) avisoEl.style.display = "none";
 }
 window.fazerLogout = fazerLogout;
 
@@ -411,6 +420,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       document.getElementById("login-overlay")?.classList.remove("active");
       const nomeEl = document.getElementById("adm-loja-nome");
       if (nomeEl) nomeEl.textContent = AUTH.nome() || "Painel Admin";
+      // Atualiza o card "Aviso de Assinatura" do menu lateral (ver assinatura.js)
+      window.AVISO_ASSINATURA?.atualizar();
       await _carregarDadosAdmin();
     }
     return;

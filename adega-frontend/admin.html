@@ -64,7 +64,15 @@
         </button>
       </nav>
       <div class="sidebar-footer">
-        <a href="loja.html" class="btn-catalogo">🛒 Ver Catálogo</a>
+        <!-- ============================================================
+             AVISO DE ASSINATURA
+             Substitui o antigo botão "Ver Catálogo" (o acesso ao catálogo
+             continua disponível pelo topo da tela, em .topbar-acoes).
+             Fica oculto por padrão e só aparece automaticamente quando
+             faltar 1 dia (ou menos) para o vencimento da assinatura.
+             Lógica: assinatura.js | Mensagens e PIX: config/pagamento.config.js
+             ============================================================ -->
+        <div class="aviso-assinatura" id="aviso-assinatura" style="display:none"></div>
         <button class="adm-nav-btn" onclick="fazerLogout()" style="color:var(--danger)">
           <span class="nav-icon">🚪</span> Sair
         </button>
@@ -769,6 +777,8 @@
     </div><!-- /adm-content -->
   </div><!-- /adm-layout -->
   
+  <script src="config/pagamento.config.js"></script>
+  <script src="assinatura.js"></script>
   <script src="api.js"></script>
   <script src="app.js"></script>
   
