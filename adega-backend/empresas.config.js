@@ -26,7 +26,7 @@ const EMPRESAS = [
     senha:      "kleber",
     ativo:      true,                        // false = acesso bloqueado
     vencimento: null,                        // "2025-12-31" ou null = sem vencimento
-    endereco:   "Rua Francisco Luiz de Oliveira, nº 52", // endereço da empresa
+    endereco:   "", // endereço da empresa
     slug:       "kleber-Demostração",              // link exclusivo: /loja/kleber-adega
   },
 
@@ -51,18 +51,18 @@ const EMPRESAS = [
     ativo:      true,
     vencimento: null,
     endereco:   "",                          // endereço da empresa
-    slug:       "rhuan",          // link exclusivo: /loja/bomboniere-maria
+    slug:       "rhuan-vendedor-Demosntração",          // link exclusivo: /loja/bomboniere-maria
   },
 
   {
     empresaId:  "ma-1",
-    nome:       "ma",
+    nome:       "marcia sampaio",
     login:      "ma",
     senha:      "ma",
     ativo:      true,
     vencimento: "2026-07-01",
     endereco:   "",                          // endereço da empresa
-    slug:       "bomboniere-maria",          // link exclusivo: /loja/bomboniere-maria
+    slug:       "Point-morenas",          // link exclusivo: /loja/bomboniere-maria
   },
 
   {
