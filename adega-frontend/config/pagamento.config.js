@@ -22,7 +22,7 @@ const PAGAMENTO_CONFIG = {
   mensagens: {
     // Exibida quando falta exatamente 1 dia para o vencimento
     avisoUmDia:
-      "Atenção! Sua assinatura vence amanhã. Renove para não perder o acesso ao sistema.",
+      "Atenção! Sua assinatura vence amanhã. chave: 11959175925 ",
 
     // Exibida no próprio dia do vencimento (junto com o QR Code do PIX)
     avisoVencido:
