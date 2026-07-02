@@ -111,6 +111,8 @@ const PedidoSchema = new mongoose.Schema({
   data:           { type: String, default: () => new Date().toISOString() },
   cliente:        { nome: String, telefone: String },
   itens:          [ItemPedidoSchema],
+  // "loja" = pedido feito pelo cliente | "manual" = venda registrada pelo admin (balcão/presencial)
+  origem:         { type: String, default: "loja" },
 }, { timestamps: true });
 
 PedidoSchema.index({ empresaId: 1, id: 1 }, { unique: true });

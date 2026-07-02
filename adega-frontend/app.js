@@ -1552,6 +1552,51 @@ function editarComplemento(id) {
 window.editarComplemento = editarComplemento;
 
 // ADMIN — Pedidos
+// ── Card de um pedido — reaproveitado em "Pedidos Recebidos" e no
+// novo "Histórico de Vendas" (historicoVendas.js), sem duplicar HTML.
+function cardPedido(p) {
+  const corBadge = p.status === "cancelado" ? "danger"
+    : p.status === "entregue" || p.status === "pago" ? "success"
+    : "warning";
+
+  const btnPago = (p.status !== "pago" && p.status !== "entregue" && p.status !== "cancelado")
+    ? `<button class="btn btn-outline btn-sm" style="color:#4caf50;border-color:#4caf50;font-size:11px;"
+         title="Marcar como pago"
+         onclick="marcarPedidoPago('${p.id}')">✅ Pago</button>`
+    : "";
+
+  return `
+  <div class="pedido-card">
+    <div class="pedido-header">
+      <div>
+        <strong>${UTIL.sanitize(p.cliente?.nome || "—")}</strong>
+        <small style="color:var(--text-muted); display:block;">${UTIL.formatarData(p.data)}</small>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <span class="badge-${corBadge}">${p.status}</span>
+        ${p.origem === "manual" ? `<span class="badge-primary" title="Venda registrada pelo administrador (balcão)">🧑‍💼 Presencial</span>` : ""}
+        ${btnPago}
+        <button class="btn-icon" title="Adicionar produto ao pedido"
+          onclick="abrirAdicionarProdutoPedido('${p.id}')" style="background:rgba(91,45,142,.2);color:var(--primary,#5B2D8E);">➕</button>
+        <button class="btn-icon btn-icon-del" title="Excluir pedido e estornar estoque"
+          onclick="confirmarExcluirPedido('${p.id}')">🗑️</button>
+      </div>
+    </div>
+    <div class="pedido-itens">
+      ${(p.itens || []).map(i =>
+        `<small>• ${i.quantidade}x ${UTIL.sanitize(i.nome)}${i.tamanho ? ` (${i.tamanho})` : ""}</small>`
+      ).join("")}
+    </div>
+    <div class="pedido-footer">
+      <span>${p.tipoEntrega === "entrega" ? "🚚 Entrega" : "🏪 Retirada"} | ${p.formaPagamento || "—"}</span>
+      <strong>${UTIL.formatarMoeda(p.total)}</strong>
+    </div>
+    ${p.tipoEntrega === "entrega" && p.endereco
+      ? `<div style="font-size:12px;color:var(--text-muted);margin-top:6px;">📍 ${UTIL.sanitize(p.endereco)}</div>`
+      : ""}
+  </div>`;
+}
+
 function renderizarAdmPedidos() {
   const activeContainer = document.getElementById("pedidos-recebidos-lista");
   const pedidos = [...STATE.get("pedidos")].sort((a, b) => {
@@ -1560,53 +1605,15 @@ function renderizarAdmPedidos() {
     return db - da; // mais recente primeiro
   });
 
-  // ── Renderiza um card de pedido ──────────────────────────
-  const renderPedido = (p) => {
-    const corBadge = p.status === "cancelado" ? "danger"
-      : p.status === "entregue" || p.status === "pago" ? "success"
-      : "warning";
-
-    const btnPago = (p.status !== "pago" && p.status !== "entregue" && p.status !== "cancelado")
-      ? `<button class="btn btn-outline btn-sm" style="color:#4caf50;border-color:#4caf50;font-size:11px;"
-           title="Marcar como pago"
-           onclick="marcarPedidoPago('${p.id}')">✅ Pago</button>`
-      : "";
-
-    return `
-    <div class="pedido-card">
-      <div class="pedido-header">
-        <div>
-          <strong>${UTIL.sanitize(p.cliente?.nome || "—")}</strong>
-          <small style="color:var(--text-muted); display:block;">${UTIL.formatarData(p.data)}</small>
-        </div>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-          <span class="badge-${corBadge}">${p.status}</span>
-          ${btnPago}
-          <button class="btn-icon" title="Adicionar produto ao pedido"
-            onclick="abrirAdicionarProdutoPedido('${p.id}')" style="background:rgba(91,45,142,.2);color:var(--primary,#5B2D8E);">➕</button>
-          <button class="btn-icon btn-icon-del" title="Excluir pedido e estornar estoque"
-            onclick="confirmarExcluirPedido('${p.id}')">🗑️</button>
-        </div>
-      </div>
-      <div class="pedido-itens">
-        ${(p.itens || []).map(i =>
-          `<small>• ${i.quantidade}x ${UTIL.sanitize(i.nome)}${i.tamanho ? ` (${i.tamanho})` : ""}</small>`
-        ).join("")}
-      </div>
-      <div class="pedido-footer">
-        <span>${p.tipoEntrega === "entrega" ? "🚚 Entrega" : "🏪 Retirada"} | ${p.formaPagamento || "—"}</span>
-        <strong>${UTIL.formatarMoeda(p.total)}</strong>
-      </div>
-      ${p.tipoEntrega === "entrega" && p.endereco
-        ? `<div style="font-size:12px;color:var(--text-muted);margin-top:6px;">📍 ${UTIL.sanitize(p.endereco)}</div>`
-        : ""}
-    </div>`;
-  };
-
   if (activeContainer) {
     activeContainer.innerHTML = pedidos.length
-      ? pedidos.map(p => renderPedido(p)).join("")
+      ? pedidos.map(p => cardPedido(p)).join("")
       : `<p class="sem-dados">Nenhum pedido recebido.</p>`;
+  }
+
+  // Mantém a aba "Histórico de Vendas" sincronizada quando estiver visível
+  if (typeof HISTORICO !== "undefined" && document.getElementById("tab-historico-vendas")?.classList.contains("ativo")) {
+    HISTORICO.renderizar();
   }
 }
 

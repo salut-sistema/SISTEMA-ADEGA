@@ -34,6 +34,78 @@
   <!-- SIDEBAR OVERLAY MOBILE -->
   <div class="sidebar-overlay" id="sidebar-overlay" onclick="fecharSidebar()"></div>
 
+  <!-- ============================================================
+       CARRINHO — Venda Manual (Balcão/Presencial)
+       Mesmo componente visual/estrutural do carrinho da Loja do
+       Cliente (loja.html). Lógica em vendaManual.js + CARRINHO (app.js).
+       ============================================================ -->
+  <div class="overlay-carrinho" id="overlay-carrinho" onclick="fecharCarrinho()"></div>
+
+  <div class="carrinho-panel" id="carrinho-panel" role="dialog" aria-label="Carrinho da venda manual">
+    <div class="carrinho-header">
+      <h3>🛒 Venda Atual</h3>
+      <button class="btn-fechar-carrinho" onclick="fecharCarrinho()" aria-label="Fechar carrinho">✕</button>
+    </div>
+
+    <div class="carrinho-itens" id="carrinho-itens"></div>
+
+    <div class="carrinho-footer">
+      <!-- Cliente já atendido antes (opcional) — reaproveita o histórico de pedidos -->
+      <div class="form-grupo">
+        <label for="venda-cliente-select">👤 Cliente</label>
+        <select id="venda-cliente-select">
+          <option value="">🧑 Venda sem cliente / Novo cliente</option>
+        </select>
+      </div>
+
+      <div class="tipo-entrega-row">
+        <div class="tipo-entrega-option" id="opc-retirada">
+          <input type="radio" name="tipo-entrega" id="te-retirada" value="retirada" checked>
+          <label for="te-retirada"><span class="te-icon">🏪</span> Retirada</label>
+        </div>
+        <div class="tipo-entrega-option" id="opc-entrega">
+          <input type="radio" name="tipo-entrega" id="te-entrega" value="entrega">
+          <label for="te-entrega"><span class="te-icon">🚚</span> Entrega</label>
+        </div>
+      </div>
+
+      <div class="area-endereco" id="area-endereco">
+        <div class="form-grupo">
+          <label for="cliente-endereco">📍 Endereço completo</label>
+          <input type="text" id="cliente-endereco" placeholder="Rua, número, bairro...">
+        </div>
+      </div>
+
+      <div class="form-grupo">
+        <label for="cliente-nome">👤 Nome do cliente (opcional)</label>
+        <input type="text" id="cliente-nome" placeholder="Cliente Balcão">
+      </div>
+      <div class="form-grupo">
+        <label for="cliente-telefone">📱 Telefone (opcional)</label>
+        <input type="tel" id="cliente-telefone" placeholder="(11) 99999-9999">
+      </div>
+      <div class="form-grupo">
+        <label for="cliente-pagamento">💳 Forma de pagamento</label>
+        <select id="cliente-pagamento">
+          <option value="Dinheiro">Dinheiro</option>
+          <option value="PIX">PIX</option>
+          <option value="Cartão de Crédito">Cartão de Crédito</option>
+          <option value="Cartão de Débito">Cartão de Débito</option>
+        </select>
+      </div>
+
+      <div class="totais">
+        <div class="total-linha"><span>Subtotal</span><span id="carrinho-subtotal">R$ 0,00</span></div>
+        <div class="total-linha"><span>Entrega</span><span id="carrinho-taxa">—</span></div>
+        <div class="total-linha total-final"><span>Total</span><span id="carrinho-total">R$ 0,00</span></div>
+      </div>
+
+      <button class="btn btn-success btn-block" id="btn-finalizar-venda">
+        ✅ Confirmar Venda
+      </button>
+    </div>
+  </div>
+
   <!-- LAYOUT PRINCIPAL -->
   <div class="adm-layout">
 
@@ -481,6 +553,8 @@
 
         <div class="tabs-nav">
           <button class="tab-btn" data-tab="tab-pedidos-recebidos">🔔 Pedidos Recebidos</button>
+          <button class="tab-btn" data-tab="tab-venda-manual">🧾 Venda Manual</button>
+          <button class="tab-btn" data-tab="tab-historico-vendas" style="margin-left:auto;">📜 Histórico de Vendas</button>
         </div>
 
         <!-- Tab: Pedidos Recebidos -->
@@ -488,6 +562,92 @@
           <div class="form-card">
             <div class="form-card-titulo">Pedidos Recebidos</div>
             <div id="pedidos-recebidos-lista"><p class="sem-dados">Nenhum pedido recebido.</p></div>
+          </div>
+        </div>
+
+        <!-- ============================================================
+             Tab: Venda Manual (Balcão/Presencial)
+             Reaproveita 100% do catálogo, carrinho e fluxo de pedido já
+             usados na Loja do Cliente. Lógica em vendaManual.js.
+             ============================================================ -->
+        <div class="tab-pane" id="tab-venda-manual">
+          <div class="form-card">
+            <div class="form-card-titulo">🧾 Nova Venda — Balcão / Presencial</div>
+            <p style="font-size:13px;color:var(--text-muted);margin:-4px 0 16px;">
+              Monte o pedido exatamente como o cliente faria na loja. Ao confirmar, a venda
+              é registrada em Pedidos, Estoque, Dashboard e Faturamento automaticamente.
+            </p>
+
+            <div class="venda-manual-toolbar">
+              <div class="venda-manual-busca">
+                <span class="busca-icon">🔍</span>
+                <input type="text" id="venda-busca-input" class="busca-input-field" placeholder="Buscar produtos..." oninput="buscarProdutos(this.value)">
+              </div>
+              <button class="btn-carrinho" onclick="abrirCarrinho()" title="Ver carrinho da venda">
+                🛒
+                <span class="carrinho-badge" id="carrinho-badge">0</span>
+              </button>
+            </div>
+
+            <div class="categorias-scroll" id="categorias-filtro"></div>
+
+            <div id="produtos-grid" class="venda-manual-produtos"></div>
+          </div>
+        </div>
+
+        <!-- ============================================================
+             Tab: Histórico de Vendas
+             Lista TODOS os pedidos (loja + venda presencial). Fonte de
+             dados também do botão "Exportar" acima. Lógica em
+             historicoVendas.js — reaproveita cardPedido() (app.js).
+             ============================================================ -->
+        <div class="tab-pane" id="tab-historico-vendas">
+          <div class="form-card">
+            <div class="form-card-titulo">📜 Histórico de Vendas</div>
+            <p style="font-size:13px;color:var(--text-muted);margin:-4px 0 16px;">
+              Todos os pedidos já registrados, feitos pela loja ou como venda presencial.
+              O botão <strong>⬇️ Exportar</strong> (no topo da página) exporta os pedidos
+              listados aqui, respeitando os filtros aplicados.
+            </p>
+
+            <div class="historico-filtros">
+              <div class="form-grupo">
+                <label for="hv-busca">🔍 Cliente</label>
+                <input type="text" id="hv-busca" placeholder="Buscar por nome...">
+              </div>
+              <div class="form-grupo">
+                <label for="hv-status">Status</label>
+                <select id="hv-status">
+                  <option value="todos">Todos</option>
+                  <option value="pendente">Pendente</option>
+                  <option value="confirmado">Confirmado</option>
+                  <option value="preparando">Preparando</option>
+                  <option value="saiu_entrega">Saiu para entrega</option>
+                  <option value="entregue">Entregue</option>
+                  <option value="pago">Pago</option>
+                  <option value="cancelado">Cancelado</option>
+                </select>
+              </div>
+              <div class="form-grupo">
+                <label for="hv-origem">Origem</label>
+                <select id="hv-origem">
+                  <option value="todos">Todas</option>
+                  <option value="loja">🛒 Loja</option>
+                  <option value="manual">🧑‍💼 Presencial</option>
+                </select>
+              </div>
+              <div class="form-grupo">
+                <label for="hv-data-ini">De</label>
+                <input type="date" id="hv-data-ini">
+              </div>
+              <div class="form-grupo">
+                <label for="hv-data-fim">Até</label>
+                <input type="date" id="hv-data-fim">
+              </div>
+              <button class="btn btn-outline btn-sm historico-btn-limpar" onclick="HISTORICO.limparFiltros()">✕ Limpar filtros</button>
+            </div>
+
+            <div id="historico-vendas-lista"><p class="sem-dados">Nenhum pedido encontrado.</p></div>
           </div>
         </div>
       </section>
@@ -781,6 +941,8 @@
   <script src="assinatura.js"></script>
   <script src="api.js"></script>
   <script src="app.js"></script>
+  <script src="vendaManual.js"></script>
+  <script src="historicoVendas.js"></script>
   
   <script>
     // Sidebar mobile
@@ -841,11 +1003,39 @@
     window.previewCores = previewCores;
 
     function exportarPedidos() {
-      const data = JSON.stringify(STATE.get("pedidos"), null, 2);
-      const blob = new Blob([data], { type: "application/json" });
+      // Reaproveita a mesma lista (já filtrada) exibida na aba "Histórico de Vendas".
+      // Se o módulo ainda não carregou por algum motivo, cai no comportamento antigo.
+      const pedidos = (typeof HISTORICO !== "undefined" && typeof HISTORICO.listaFiltrada === "function")
+        ? HISTORICO.listaFiltrada()
+        : STATE.get("pedidos");
+
+      // Gera um texto simples só com as informações do pedido — sem emoji,
+      // sem botões e sem dados pesados como a imagem do produto (base64).
+      const blocos = pedidos.map(p => {
+        const nome  = p.cliente?.nome || "—";
+        const data  = UTIL.formatarData(p.data);
+        const itens = (p.itens || [])
+          .map(i => `${i.quantidade}x ${i.nome}${i.tamanho ? ` (${i.tamanho})` : ""}`)
+          .join("\n");
+        const tipo  = p.tipoEntrega === "entrega" ? "Entrega" : "Retirada";
+
+        let linhas = [
+          `Cliente: ${nome}`,
+          `Data: ${data}`,
+          `Status: ${p.status}`,
+          itens,
+          `${tipo} | ${p.formaPagamento || "—"}`,
+          `Total: ${UTIL.formatarMoeda(p.total)}`,
+        ];
+        if (p.tipoEntrega === "entrega" && p.endereco) linhas.push(`Endereço: ${p.endereco}`);
+        return linhas.join("\n");
+      });
+
+      const texto = blocos.join("\n\n----------------------------------------\n\n");
+      const blob = new Blob([texto], { type: "text/plain;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url; a.download = `pedidos_${UTIL.hoje()}.json`;
+      a.href = url; a.download = `pedidos_${UTIL.hoje()}.txt`;
       a.click(); URL.revokeObjectURL(url);
     }
     window.exportarPedidos = exportarPedidos;
