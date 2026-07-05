@@ -397,6 +397,20 @@ h1, h2, h3, h4 { font-family: var(--font-display); }
   .produtos-row { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
 }
 
+/* Mobile: sempre 2 produtos por linha, lado a lado, com o card mais compacto */
+@media (max-width: 599px) {
+  .produtos-row { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .pc-img { aspect-ratio: 1/1; }
+  .pc-emoji { font-size: 32px; }
+  .pc-body { padding: 8px; }
+  .pc-body h3 { font-size: 12px; margin-bottom: 2px; -webkit-line-clamp: 2; display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+  .pc-body p { display: none; } /* descrição escondida no card compacto; some via modal do produto */
+  .pc-footer { margin-top: 4px; }
+  .pc-preco { font-size: 12px; }
+  .pc-preco small { font-size: 9px; }
+  .btn-add { width: 26px; height: 26px; font-size: 16px; }
+}
+
 .produto-card {
   background: var(--surface);
   border: 1px solid var(--border);

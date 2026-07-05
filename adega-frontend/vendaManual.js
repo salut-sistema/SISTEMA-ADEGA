@@ -28,6 +28,12 @@ const VENDA_MANUAL = {
     renderizarProdutos();   // mesma função usada na Loja do Cliente
     CARRINHO.atualizarUI();
     this._popularClientes();
+
+    // Mesma regra da Loja do Cliente: some com a opção desativada pelo admin
+    const opcEntrega  = document.getElementById("opc-entrega");
+    const opcRetirada = document.getElementById("opc-retirada");
+    if (opcEntrega)  opcEntrega.style.display  = CONFIG.delivery?.entregaAtiva  === false ? "none" : "";
+    if (opcRetirada) opcRetirada.style.display = CONFIG.delivery?.retiradaAtiva === false ? "none" : "";
   },
 
   // ── Lista de "clientes já atendidos" — reaproveita o histórico de   ──
@@ -143,8 +149,11 @@ const VENDA_MANUAL = {
   },
 
   // ── Liga os eventos da aba (rádio de entrega e botão de confirmar) ──
+  // Os campos do formulário (rádio de tipo de entrega, endereço, etc.)
+  // ficam dentro do painel #carrinho-panel (mesmo componente da Loja do
+  // Cliente) — não dentro de #tab-venda-manual, que é só a aba do catálogo.
   _bindEventos() {
-    document.querySelectorAll('#tab-venda-manual input[name="tipo-entrega"]').forEach(r => {
+    document.querySelectorAll('#carrinho-panel input[name="tipo-entrega"]').forEach(r => {
       r.addEventListener("change", () => {
         const isEntrega = r.value === ENUMS.TIPO_ENTREGA.ENTREGA;
         const enderecoArea = document.getElementById("area-endereco");

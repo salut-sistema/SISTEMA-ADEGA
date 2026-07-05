@@ -432,6 +432,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const match  = window.location.pathname.match(/\/loja\/([^/?#]+)/);
   const params = new URLSearchParams(window.location.search);
   const slug   = match?.[1] || params.get("slug") || AUTH.slug();
+  window.LOJA_SLUG = slug; // usado por WPP.enviar (app.js) para identificar a empresa do pedido
 
   // Mostra botão "Voltar ao Admin" se o admin estiver logado
   if (AUTH.logado()) {
@@ -461,46 +462,5 @@ document.addEventListener("DOMContentLoaded", async () => {
     } catch(e) {
       console.error("Erro ao carregar loja:", e.message);
     }
-
-    // Intercepta WPP.enviar para salvar pedido no MongoDB via rota pública
-    // Aguarda o app.js terminar de definir WPP antes de interceptar
-    setTimeout(() => {
-      if (typeof WPP === "undefined" || typeof WPP.enviar !== "function") return;
-
-      const _wppOriginal = WPP.enviar.bind(WPP);
-      WPP.enviar = async (cliente, tipoEntrega, formaPagamento, endereco) => {
-        // ✅ FIX: captura itens e total ANTES de WPP.enviar limpar o carrinho
-        const itensPedido = (STATE.get("carrinho") || []).map(i => ({ ...i }));
-        const subtotalPedido = CARRINHO.total();
-        const taxa = tipoEntrega === "entrega" ? (CONFIG.delivery?.taxaEntrega || 0) : 0;
-        const totalPedido = subtotalPedido + taxa;
-
-        // Executa o comportamento original (abre WhatsApp + limpa carrinho)
-        _wppOriginal(cliente, tipoEntrega, formaPagamento, endereco);
-
-        // Monta o pedido para salvar no MongoDB com dados já capturados
-        const pedido = {
-          id:             typeof UTIL !== "undefined" ? UTIL.id() : Date.now().toString(36),
-          status:         "pendente",
-          tipoEntrega,
-          formaPagamento,
-          endereco:       endereco || "",
-          total:          totalPedido,
-          subtotal:       subtotalPedido,
-          taxaEntrega:    taxa,
-          data:           new Date().toISOString(),
-          cliente,
-          itens:          itensPedido,
-        };
-
-        try {
-          // Usa rota pública — não precisa de token do admin
-          await API_PEDIDOS.criarPublico(slug, pedido);
-          console.log("✅ Pedido salvo no MongoDB!");
-        } catch(e) {
-          console.error("[Pedido] Erro ao salvar:", e.message);
-        }
-      };
-    }, 500); // aguarda 500ms para garantir que WPP já foi definido pelo app.js
   }
 });

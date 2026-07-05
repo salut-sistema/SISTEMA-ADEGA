@@ -70,7 +70,7 @@ const ENUMS = {
     COMPLEMENTO_SALVO: "Complemento salvo com sucesso!",
     CONFIG_SALVA: "Configurações salvas com sucesso!",
     SENHA_ERRADA: "Senha incorreta. Tente novamente.",
-    PEDIDO_ENVIADO: "Pedido enviado pelo WhatsApp!",
+    PEDIDO_ENVIADO: "Pedido enviado com sucesso!",
     CARRINHO_VAZIO: "Seu carrinho está vazio.",
     CAMPO_OBRIGATORIO: "Preencha todos os campos obrigatórios.",
     CONFIRMAR_EXCLUSAO: "Tem certeza que deseja excluir?",
@@ -444,15 +444,19 @@ const CARRINHO = {
     const tipoEntrega = document.querySelector('input[name="tipo-entrega"]:checked')?.value || ENUMS.TIPO_ENTREGA.RETIRADA;
     const taxaCadastrada = CONFIG.delivery.taxaEntrega || 0;
     const isEntrega = tipoEntrega === ENUMS.TIPO_ENTREGA.ENTREGA && CONFIG.delivery.entregaAtiva;
-    // Na entrega: cobra a taxa. Na retirada: exibe o valor informativo mas não soma ao total.
+    // Só cobra e exibe a taxa quando o tipo selecionado é Entrega.
+    // Na Retirada, a linha mostra "Retirada" + "Grátis", nunca o valor da taxa.
     const taxaCobrada = isEntrega ? taxaCadastrada : 0;
     const total = subtotal + taxaCobrada;
-    const elSub = document.getElementById("carrinho-subtotal");
-    const elTaxa = document.getElementById("carrinho-taxa");
+    const elSub   = document.getElementById("carrinho-subtotal");
+    const elTaxa  = document.getElementById("carrinho-taxa");
+    const elLabel = document.getElementById("carrinho-taxa-label");
     const elTotal = document.getElementById("carrinho-total");
     if (elSub) elSub.textContent = UTIL.formatarMoeda(subtotal);
-    // Sempre exibe o valor cadastrado (informativo); na retirada não é cobrado
-    if (elTaxa) elTaxa.textContent = taxaCadastrada > 0 ? UTIL.formatarMoeda(taxaCadastrada) : "Grátis";
+    if (elLabel) elLabel.textContent = isEntrega ? "Entrega" : "Retirada";
+    if (elTaxa) elTaxa.textContent = isEntrega
+      ? (taxaCadastrada > 0 ? UTIL.formatarMoeda(taxaCadastrada) : "Grátis")
+      : "Grátis";
     if (elTotal) elTotal.textContent = UTIL.formatarMoeda(total);
   },
 };
@@ -461,43 +465,24 @@ const CARRINHO = {
 STATE.on("carrinho", () => CARRINHO.atualizarUI());
 
 // ============================================================
-// WHATSAPP
+// ENVIO DE PEDIDO (Loja do Cliente)
+// ── Antes abria o WhatsApp com uma mensagem editável antes do envio,
+//    o que podia gerar divergência entre o que ficava registrado no
+//    sistema e o que era efetivamente enviado ao estabelecimento.
+//    Agora o pedido vai direto para o sistema (mesma rota pública
+//    API_PEDIDOS.criarPublico já usada), sem abrir o WhatsApp.
+//    Mantido o nome "WPP" apenas para não quebrar referências
+//    existentes (ex.: chamada em bindCarrinhoFinalizacao).
 // ============================================================
 const WPP = {
-  gerarMensagem(cliente, tipoEntrega, formaPagamento, endereco) {
-    const carrinho = STATE.get("carrinho");
-    const linhas = [
-      `🛒 *NOVO PEDIDO — ${CONFIG.loja.nome}*`,
-      `━━━━━━━━━━━━━━━━━━━━━`,
-      `👤 *Cliente:* ${cliente.nome}`,
-      `📱 *Tel:* ${cliente.telefone}`,
-      ``,
-      `📦 *ITENS DO PEDIDO:*`,
-    ];
-    carrinho.forEach((item, i) => {
-      const compPreco = item.complementos.reduce((s, c) => s + (c.preco || 0), 0);
-      linhas.push(`\n${i + 1}. *${item.nome}*${item.tamanho ? ` (${item.tamanho})` : ""}`);
-      linhas.push(`   Qtd: ${item.quantidade}x — ${UTIL.formatarMoeda(item.preco)}`);
-      if (item.complementos.length) linhas.push(`   ➕ ${item.complementos.map(c => c.nome).join(", ")}`);
-      if (item.observacao) linhas.push(`   📝 ${item.observacao}`);
-      linhas.push(`   Subtotal: ${UTIL.formatarMoeda((item.preco + compPreco) * item.quantidade)}`);
-    });
-    const subtotal = CARRINHO.total();
-    const taxa = tipoEntrega === ENUMS.TIPO_ENTREGA.ENTREGA && CONFIG.delivery.entregaAtiva
-      ? CONFIG.delivery.taxaEntrega : 0;
-    linhas.push(`\n━━━━━━━━━━━━━━━━━━━━━`);
-    linhas.push(`💰 *Subtotal:* ${UTIL.formatarMoeda(subtotal)}`);
-    linhas.push(`🚚 *${tipoEntrega === ENUMS.TIPO_ENTREGA.ENTREGA ? "Taxa de entrega" : "Retirada"}:* ${taxa > 0 ? UTIL.formatarMoeda(taxa) : "Grátis"}`);
-    linhas.push(`✅ *TOTAL: ${UTIL.formatarMoeda(subtotal + taxa)}*`);
-    linhas.push(`\n💳 *Pagamento:* ${formaPagamento}`);
-    if (tipoEntrega === ENUMS.TIPO_ENTREGA.ENTREGA) linhas.push(`📍 *Endereço:* ${endereco}`);
-    linhas.push(`\n⏱ Tempo estimado: ${CONFIG.delivery.tempoEstimado}`);
-    return encodeURIComponent(linhas.join("\n"));
-  },
-  enviar(cliente, tipoEntrega, formaPagamento, endereco) {
+  async enviar(cliente, tipoEntrega, formaPagamento, endereco) {
     const carrinho = STATE.get("carrinho");
     if (carrinho.length === 0) { MODAL.erro(ENUMS.MSGS.CARRINHO_VAZIO); return; }
     if (!cliente.nome || !cliente.telefone) { MODAL.erro(ENUMS.MSGS.CAMPO_OBRIGATORIO); return; }
+
+    const subtotal = CARRINHO.total();
+    const taxa = tipoEntrega === ENUMS.TIPO_ENTREGA.ENTREGA && CONFIG.delivery.entregaAtiva
+      ? CONFIG.delivery.taxaEntrega : 0;
 
     const pedido = {
       id: UTIL.id(),
@@ -507,46 +492,36 @@ const WPP = {
       tipoEntrega,
       formaPagamento,
       endereco,
-      subtotal: CARRINHO.total(),
-      taxaEntrega: tipoEntrega === ENUMS.TIPO_ENTREGA.ENTREGA ? CONFIG.delivery.taxaEntrega : 0,
-      total: CARRINHO.total() + (tipoEntrega === ENUMS.TIPO_ENTREGA.ENTREGA ? CONFIG.delivery.taxaEntrega : 0),
+      subtotal,
+      taxaEntrega: taxa,
+      total: subtotal + taxa,
       status: ENUMS.STATUS_PEDIDO.PENDENTE,
     };
 
-    STATE.update("pedidos", p => [...p, pedido]);
-    STORAGE.salvarPedidos();
-
-    // Decrementar estoque
-    const produtos = [...STATE.get("produtos")];
-    const complementos = [...STATE.get("complementos")];
-
-    carrinho.forEach(item => {
-      const prod = produtos.find(p => p.id === item.produtoId);
-      if (prod && prod.estoque !== undefined && prod.estoque !== null && prod.estoque !== "") {
-        prod.estoque = Math.max(0, (prod.estoque || 0) - item.quantidade);
-        prod.vendas = (prod.vendas || 0) + item.quantidade;
+    try {
+      // Rota pública — não precisa de token de admin. O slug identifica
+      // exclusivamente a empresa dona do link, garantindo que o pedido
+      // chegue à empresa correta (multi-tenant).
+      if (window.LOJA_SLUG && typeof API_PEDIDOS !== "undefined") {
+        await API_PEDIDOS.criarPublico(window.LOJA_SLUG, pedido);
+      } else {
+        // Fallback local — usado só quando a loja é aberta sem slug/backend
+        // (ex.: teste local do arquivo). Mesmo formato de pedido.
+        STATE.update("pedidos", p => [...p, pedido]);
+        STORAGE.salvarPedidos();
       }
-      item.complementos.forEach(c => {
-        const comp = complementos.find(x => x.id === c.id);
-        if (comp && comp.estoque !== undefined && comp.estoque !== "") {
-          comp.estoque = Math.max(0, (comp.estoque || 0) - item.quantidade);
-        }
-      });
-    });
+    } catch (e) {
+      console.error("Erro ao enviar pedido:", e.message);
+      MODAL.erro("Não foi possível enviar seu pedido. Tente novamente.");
+      return;
+    }
 
-    STATE.set("produtos", produtos);
-    STATE.set("complementos", complementos);
-    STORAGE.salvarProdutos();
-    STORAGE.salvarComplementos();
-
-    const msg = this.gerarMensagem(cliente, tipoEntrega, formaPagamento, endereco);
-    const num = CONFIG.contato.whatsapp.replace(/\D/g, "");
-    window.open(`https://wa.me/${num}?text=${msg}`, "_blank");
     CARRINHO.limpar();
     MODAL.sucesso(ENUMS.MSGS.PEDIDO_ENVIADO);
     fecharCarrinho();
   },
 };
+
 
 // ============================================================
 // PRODUTOS
@@ -2259,7 +2234,7 @@ function bindCarrinhoFinalizacao() {
       CARRINHO._atualizarTotais();
     });
   });
-  document.getElementById("btn-finalizar")?.addEventListener("click", () => {
+  document.getElementById("btn-finalizar")?.addEventListener("click", async () => {
     const nome = document.getElementById("cliente-nome")?.value?.trim();
     const tel = document.getElementById("cliente-telefone")?.value?.trim();
     const tipoEntrega = document.querySelector('input[name="tipo-entrega"]:checked')?.value;
@@ -2269,7 +2244,7 @@ function bindCarrinhoFinalizacao() {
       MODAL.erro("Informe o endereço de entrega.");
       return;
     }
-    WPP.enviar({ nome, telefone: tel }, tipoEntrega, pag, endereco);
+    await WPP.enviar({ nome, telefone: tel }, tipoEntrega, pag, endereco);
   });
 }
 

@@ -60,7 +60,7 @@ const EMPRESAS = [
     login:      "ma",
     senha:      "ma",
     ativo:      true,
-    vencimento: "2026-07-01",
+    vencimento: "2026-08-08",
     endereco:   "",                          // endereço da empresa
     slug:       "Point-morenas",          // link exclusivo: /loja/bomboniere-maria
   },
