@@ -66,14 +66,14 @@ const EMPRESAS = [
   },
 
   {
-    empresaId:  "mari-1",
-    nome:       "mari",
-    login:      "mari",
-    senha:      "mari",
+    empresaId:  "leandro-1",
+    nome:       "leandro nascimento",
+    login:      "leandro",
+    senha:      "leandro",
     ativo:      true,
-    vencimento: "2026-07-02",
+    vencimento: "2026-08-11",
     endereco:   "",                          // endereço da empresa
-    slug:       "mariele",          // link exclusivo: /loja/bomboniere-maria
+    slug:       "pizzaria",          // link exclusivo: /loja/bomboniere-maria
   },
 
 
