@@ -6,6 +6,7 @@ const express     = require("express");
 const router      = express.Router();
 const { Produto, EstoqueBase, Categoria, Complemento, Pedido, Config } = require("../models");
 const { authMiddleware, EMPRESAS, empresaValida } = require("../middleware/auth");
+const { SENHA_MASTER } = require("../empresaConfig");
 
 // Helpers de resposta padronizada
 const ok  = (res, data)         => res.json({ sucesso: true, data });
@@ -69,6 +70,17 @@ router.post("/pedidos/publico/:slug", async (req, res) => {
 
 // ── A partir daqui todas as rotas exigem autenticação ────────
 router.use(authMiddleware);
+
+// ============================================================
+// SENHA MASTER — validação centralizada (valor vem de empresaConfig.js)
+// Protege ações sensíveis do painel: alteração manual de estoque,
+// exclusões e salvamento de configurações.
+// ============================================================
+router.post("/senha-master/validar", (req, res) => {
+  const { senha } = req.body || {};
+  const valida = !!senha && senha === SENHA_MASTER;
+  ok(res, { valida });
+});
 
 // ============================================================
 // PRODUTOS

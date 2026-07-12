@@ -317,7 +317,7 @@
                   <button type="button" id="btn-remover-imagem" style="display:none;margin-top:6px;font-size:12px;background:none;border:none;color:#e55;cursor:pointer;"
                     onclick="_removerImagemProduto()">✕ Remover imagem</button>
                 </div>
-                <div class="form-grupo">
+                <div hidden class="form-grupo">
                   <label for="prod-emoji">Emoji (se não tiver imagem)</label>
                   <input type="text" id="prod-emoji" placeholder="🍇" maxlength="4">
                 </div>
@@ -394,7 +394,12 @@
         <!-- Tab: Lista de Produtos -->
         <div class="tab-pane" id="tab-produtos-lista">
           <div class="form-card">
-            <div class="form-card-titulo">Produtos Cadastrados</div>
+            <div class="form-card-titulo" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+              <span>Produtos Cadastrados</span>
+              <input type="text" id="adm-produtos-busca" placeholder="🔎 Buscar por nome ou categoria..."
+                autocomplete="off" style="max-width:280px;flex:1;min-width:180px;"
+                oninput="renderizarAdmProdutos()">
+            </div>
             <div id="adm-produtos-lista"><p class="sem-dados">Nenhum produto cadastrado.</p></div>
           </div>
         </div>
@@ -1404,13 +1409,16 @@
       const qtd  = parseFloat(prompt(`Quantidade a ${tipo === "entrada" ? "adicionar" : "remover"} (em kg/L):`));
       if (isNaN(qtd) || qtd <= 0) return;
       const desc = prompt("Descrição (opcional):") || "";
-      try {
-        const eb   = await API_ESTOQUE_BASE.movimentar(id, tipo, qtd, desc);
-        const lista = STATE.get("estoquesBases") || [];
-        STATE.set("estoquesBases", lista.map(e => e.id === id ? eb : e));
-        renderizarEstoqueBase();
-        MODAL.toast("Estoque atualizado! ✅");
-      } catch(e) { alert("Erro: " + e.message); }
+      // Protege qualquer alteração manual de estoque com a senha master (empresaConfig.js)
+      MODAL.pedirSenha(tipo === "entrada" ? "Adicionar Estoque" : "Remover Estoque", async () => {
+        try {
+          const eb   = await API_ESTOQUE_BASE.movimentar(id, tipo, qtd, desc);
+          const lista = STATE.get("estoquesBases") || [];
+          STATE.set("estoquesBases", lista.map(e => e.id === id ? eb : e));
+          renderizarEstoqueBase();
+          MODAL.toast("Estoque atualizado! ✅");
+        } catch(e) { alert("Erro: " + e.message); }
+      });
     }
     window.movimentarEstoqueBase = movimentarEstoqueBase;
 

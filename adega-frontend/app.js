@@ -43,9 +43,12 @@ const CONFIG = {
     retiradaAtiva: true,
   },
   senha: {
-    admin: "1234",
-    confirmacoes: "1234",
-   
+    // Legado: mantido apenas por compatibilidade com o cache local (localStorage).
+    // A validação real da senha master agora é feita no backend, a partir de
+    // adega-backend/empresaConfig.js — nada fica fixo/hardcoded aqui.
+    admin: "",
+    confirmacoes: "",
+
   },
   pagamento: {
     formas: ["PIX", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"],
@@ -209,8 +212,17 @@ const UTIL = {
     d.textContent = str || "";
     return d.innerHTML;
   },
-  verificarSenha(senha) {
-    return senha === CONFIG.senha.confirmacoes || senha === CONFIG.senha.admin;
+  async verificarSenha(senha) {
+    if (!senha) return false;
+    try {
+      // Valida a senha master no backend — o valor real vem de empresaConfig.js
+      // e nunca fica exposto/hardcoded no frontend.
+      const resposta = await API_SENHA_MASTER.validar(senha);
+      return !!(resposta && resposta.valida);
+    } catch (e) {
+      console.error("Erro ao validar senha master:", e.message);
+      return false;
+    }
   },
   aplicarCores() {
     const r  = document.documentElement.style;
@@ -241,7 +253,7 @@ const UTIL = {
 // MODAL SYSTEM
 // ============================================================
 const MODAL = {
-  mostrar(tipo, titulo, mensagem, onConfirm = null, placeholder = "") {
+  mostrar(tipo, titulo, mensagem, onConfirm = null, placeholder = "", onCancel = null) {
     document.getElementById("modal-overlay")?.remove();
     const overlay = document.createElement("div");
     overlay.id = "modal-overlay";
@@ -256,7 +268,7 @@ const MODAL = {
         <p class="modal-msg">${mensagem}</p>
         ${tipo === "senha" ? `<input type="password" id="modal-senha-input" class="modal-input" placeholder="${placeholder || 'Digite a senha'}" autocomplete="off">` : ""}
         <div class="modal-btns">
-          ${isConfirm ? `<button class="btn btn-outline" onclick="MODAL.fechar()">Cancelar</button>` : ""}
+          ${isConfirm ? `<button class="btn btn-outline" id="modal-cancel-btn">Cancelar</button>` : ""}
           <button class="btn ${tipo==='erro'?'btn-danger':tipo==='sucesso'?'btn-success':'btn-primary'}" id="modal-confirm-btn">
             ${tipo === "senha" ? "Confirmar" : isConfirm ? "Confirmar" : "OK"}
           </button>
@@ -265,11 +277,21 @@ const MODAL = {
     document.body.appendChild(overlay);
     setTimeout(() => overlay.classList.add("active"), 10);
     const btn = document.getElementById("modal-confirm-btn");
+    const cancelBtn = document.getElementById("modal-cancel-btn");
+    if (cancelBtn) cancelBtn.onclick = () => { MODAL.fechar(); if (onCancel) onCancel(); };
     if (tipo === "senha") {
-      btn.onclick = () => {
-        const val = document.getElementById("modal-senha-input")?.value;
-        if (UTIL.verificarSenha(val)) { MODAL.fechar(); if (onConfirm) onConfirm(); }
-        else { document.getElementById("modal-senha-input").classList.add("input-erro"); MODAL.shake(); }
+      btn.onclick = async () => {
+        const inputEl = document.getElementById("modal-senha-input");
+        const val = inputEl?.value;
+        btn.disabled = true;
+        try {
+          // Validação assíncrona: consulta a senha master centralizada no backend
+          const valida = await UTIL.verificarSenha(val);
+          if (valida) { MODAL.fechar(); if (onConfirm) onConfirm(); }
+          else { inputEl?.classList.add("input-erro"); MODAL.shake(); }
+        } finally {
+          btn.disabled = false;
+        }
       };
       document.getElementById("modal-senha-input")?.addEventListener("keydown", e => { if (e.key === "Enter") btn.click(); });
       setTimeout(() => document.getElementById("modal-senha-input")?.focus(), 100);
@@ -279,7 +301,9 @@ const MODAL = {
       btn.onclick = () => { MODAL.fechar(); if (onConfirm) onConfirm(); };
       setTimeout(() => MODAL.fechar(), 3000);
     }
-    overlay.addEventListener("click", e => { if (e.target === overlay && tipo !== "senha") MODAL.fechar(); });
+    overlay.addEventListener("click", e => {
+      if (e.target === overlay && tipo !== "senha") { MODAL.fechar(); if (onCancel) onCancel(); }
+    });
   },
   fechar() {
     const o = document.getElementById("modal-overlay");
@@ -293,7 +317,7 @@ const MODAL = {
   sucesso(msg) { this.mostrar("sucesso", "Sucesso!", msg); },
   erro(msg) { this.mostrar("erro", "Ops!", msg); },
   confirmar(msg, cb) { this.mostrar("confirmacao", "Confirmar ação", msg, cb); },
-  pedirSenha(titulo, cb) { this.mostrar("senha", titulo, "Digite a senha para continuar:", cb); },
+  pedirSenha(titulo, cb, onCancel = null) { this.mostrar("senha", titulo, "Digite a senha para continuar:", cb, "", onCancel); },
   abrir(html) {
     document.getElementById("modal-overlay")?.remove();
     const overlay = document.createElement("div");
@@ -1248,32 +1272,85 @@ function renderizarAdmin() {
 function renderizarAdmProdutos() {
   const container = document.getElementById("adm-produtos-lista");
   if (!container) return;
-  const lista = [...STATE.get("produtos")].sort((a, b) => (b.vendas || 0) - (a.vendas || 0));
+
+  // Mapa de categorias (id -> objeto categoria) para exibir nome/emoji/ordem
+  const categorias = STATE.get("categorias") || [];
+  const mapaCategorias = {};
+  categorias.forEach(c => { mapaCategorias[c.id] = c; });
+
+  // Termo de busca (por nome do produto ou nome da categoria) — tempo real, não altera dados
+  const termoBusca = (document.getElementById("adm-produtos-busca")?.value || "").trim().toLowerCase();
+
+  let lista = [...STATE.get("produtos")];
+
+  if (termoBusca) {
+    lista = lista.filter(p => {
+      const nomeCategoria = (mapaCategorias[p.categoria]?.nome || "").toLowerCase();
+      return p.nome.toLowerCase().includes(termoBusca) || nomeCategoria.includes(termoBusca);
+    });
+  }
+
   if (lista.length === 0) {
-    container.innerHTML = `<p class="sem-dados">Nenhum produto cadastrado.</p>`;
+    container.innerHTML = termoBusca
+      ? `<p class="sem-dados">Nenhum produto encontrado para "${UTIL.sanitize(termoBusca)}".</p>`
+      : `<p class="sem-dados">Nenhum produto cadastrado.</p>`;
     return;
   }
-  container.innerHTML = lista.map((p, i) => `
-    <div class="adm-item ${p.ativo ? "" : "pausado"}">
-      <div class="adm-item-img" style="position:relative;">
-        ${p.imagem
-          ? `<img src="${UTIL.sanitize(p.imagem)}" alt="">`
-          : `<span>${p.emoji || "🛍️"}</span>`}
-        <span style="position:absolute;top:-6px;left:-6px;background:var(--primary,#5B2D8E);color:#fff;border-radius:50%;width:22px;height:22px;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;">${i + 1}°</span>
-      </div>
-      <div class="adm-item-info">
-        <strong>${UTIL.sanitize(p.nome)}</strong>
-        <small>${UTIL.formatarMoeda(p.preco)} / ${p.unidade || "un"} | Estoque: ${p.estoque ?? "∞"} | Vendas: ${p.vendas || 0}</small>
-        ${(p.tamanhos && p.tamanhos.length) ? `<small>Tamanhos: ${p.tamanhos.map(t => typeof t === "object" ? t.volume + " — " + UTIL.formatarMoeda(t.preco) : t).join(" | ")}</small>` : ""}
-        ${!p.ativo ? `<span class="badge-warning">Pausado</span>` : ""}
-      </div>
-      <div class="adm-item-acoes">
-        <button class="btn-icon" onclick="editarProduto('${p.id}')" title="Editar">✏️</button>
-        <button class="btn-icon" onclick="pausarProduto('${p.id}')" title="${p.ativo ? 'Pausar' : 'Reativar'}">${p.ativo ? "⏸" : "▶️"}</button>
-        <button class="btn-icon btn-icon-del" onclick="excluirProduto('${p.id}')" title="Excluir">🗑️</button>
 
-      </div>
-    </div>`).join("");
+  // Ranking global por vendas (mantém a numeração original, mesmo agrupando por categoria)
+  const rankMap = new Map(
+    [...lista].sort((a, b) => (b.vendas || 0) - (a.vendas || 0)).map((p, i) => [p.id, i + 1])
+  );
+
+  // Agrupa apenas para exibição visual — não altera os dados nem a lógica existente
+  const grupos = {};
+  lista.forEach(p => {
+    const catId = p.categoria || "__sem_categoria__";
+    if (!grupos[catId]) grupos[catId] = [];
+    grupos[catId].push(p);
+  });
+
+  // Ordena os grupos pela "ordem" cadastrada da categoria; sem categoria fica por último
+  const idsOrdenados = Object.keys(grupos).sort((a, b) => {
+    if (a === "__sem_categoria__") return 1;
+    if (b === "__sem_categoria__") return -1;
+    return (mapaCategorias[a]?.ordem ?? 0) - (mapaCategorias[b]?.ordem ?? 0);
+  });
+
+  container.innerHTML = idsOrdenados.map(catId => {
+    const cat = mapaCategorias[catId];
+    const nomeCategoria = cat ? `${cat.emoji || "🏷️"} ${cat.nome}` : "🏷️ Sem categoria";
+    const itens = [...grupos[catId]].sort((a, b) => (b.vendas || 0) - (a.vendas || 0));
+
+    return `
+      <div class="adm-grupo-categoria" style="margin-bottom:16px;">
+        <div style="font-size:13px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border);">
+          ${UTIL.sanitize(nomeCategoria)} <span style="font-weight:400;">(${itens.length})</span>
+        </div>
+        ${itens.map(p => `
+          <div class="adm-item ${p.ativo ? "" : "pausado"}">
+            <div class="adm-item-img" style="position:relative;">
+              ${p.imagem
+                ? `<img src="${UTIL.sanitize(p.imagem)}" alt="">`
+                : `<span>${p.emoji || "🛍️"}</span>`}
+              <span style="position:absolute;top:-6px;left:-6px;background:var(--primary,#5B2D8E);color:#fff;border-radius:50%;width:22px;height:22px;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;">${rankMap.get(p.id)}°</span>
+            </div>
+            <div class="adm-item-info">
+              <strong>${UTIL.sanitize(p.nome)}</strong>
+              <small>${UTIL.formatarMoeda(p.preco)} / ${p.unidade || "un"} | Estoque: ${p.estoque ?? "∞"} | Vendas: ${p.vendas || 0}</small>
+              <small>${UTIL.sanitize(nomeCategoria)}</small>
+              ${(p.tamanhos && p.tamanhos.length) ? `<small>Tamanhos: ${p.tamanhos.map(t => typeof t === "object" ? t.volume + " — " + UTIL.formatarMoeda(t.preco) : t).join(" | ")}</small>` : ""}
+              ${!p.ativo ? `<span class="badge-warning">Pausado</span>` : ""}
+            </div>
+            <div class="adm-item-acoes">
+              <button class="btn-icon" onclick="editarProduto('${p.id}')" title="Editar">✏️</button>
+              <button class="btn-icon" onclick="pausarProduto('${p.id}')" title="${p.ativo ? 'Pausar' : 'Reativar'}">${p.ativo ? "⏸" : "▶️"}</button>
+              <button class="btn-icon btn-icon-del" onclick="excluirProduto('${p.id}')" title="Excluir">🗑️</button>
+
+            </div>
+          </div>`).join("")}
+      </div>`;
+  }).join("");
 }
 window.renderizarAdmProdutos = renderizarAdmProdutos;
 
@@ -1382,9 +1459,15 @@ function renderizarControleEstoque() {
 window.renderizarControleEstoque = renderizarControleEstoque;
 
 function atualizarEstoque(id, valor) {
-  PRODUTOS.editar(id, { estoque: valor === "" ? "" : parseInt(valor) });
-  MODAL.toast("Estoque atualizado!");
-  DASHBOARD.atualizar();
+  // Protege qualquer alteração manual de estoque com a senha master (empresaConfig.js)
+  MODAL.pedirSenha("Alterar Estoque", () => {
+    PRODUTOS.editar(id, { estoque: valor === "" ? "" : parseInt(valor) });
+    MODAL.toast("Estoque atualizado!");
+    DASHBOARD.atualizar();
+  }, () => {
+    // Cancelado ou senha incorreta: reverte o valor exibido no campo
+    renderizarControleEstoque();
+  });
 }
 window.atualizarEstoque = atualizarEstoque;
 

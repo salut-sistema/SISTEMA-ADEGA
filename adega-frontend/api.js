@@ -100,6 +100,12 @@ const API_CONFIG    = {
 
 const API_DASHBOARD = { async carregar() { return apiFetch("GET","/dashboard"); } };
 
+// API Senha Master — valida a senha master centralizada no backend (empresaConfig.js)
+// Nunca compara a senha localmente: o valor real nunca fica exposto no frontend.
+const API_SENHA_MASTER = {
+  async validar(senha) { return apiFetch("POST", "/senha-master/validar", { senha }); },
+};
+
 // API Estoque-Base — controle de estoque por peso
 const API_ESTOQUE_BASE = {
   async listar()                    { return apiFetch("GET",   "/estoque-base"); },
