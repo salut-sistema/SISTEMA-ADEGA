@@ -455,6 +455,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       STATE.set("complementos", loja.complementos || []);
       STATE.set("pedidos",      []);
       _aplicarConfig(loja.config);
+      // Reaplica o footer/banner com os dados reais da empresa (nome, endereço, etc.)
+      // agora que a config terminou de carregar — corrige o footer mostrando
+      // sempre dados desatualizados/padrão quando a config demorava mais que o
+      // preenchimento inicial da página.
+      if (typeof window._sincronizarInfoLoja === "function") window._sincronizarInfoLoja();
       if (typeof UTIL !== "undefined") UTIL.aplicarCores();
       if (typeof renderizarCatalogo === "function") renderizarCatalogo();
       // Reaplicar cores após renderizar (garante que elementos dinâmicos recebam)

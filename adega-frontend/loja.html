@@ -63,7 +63,7 @@
   <!-- FOOTER -->
   <footer class="cliente-footer">
     <div class="footer-inner">
-      <div class="footer-logo" id="footer-nome">O melhor para você!</div>
+      <div class="footer-logo" id="footer-nome">🍇 Açaí & Cia</div>
       <div class="footer-info">
         <span id="footer-endereco"></span><br>
         <span id="footer-cidade"></span><br>
@@ -176,43 +176,49 @@
   
 
   <script>
+    // Preenche o footer, banner e formas de pagamento com os dados atuais de CONFIG.
+    // Exposta em window para poder ser chamada de novo assim que a config real
+    // da empresa terminar de carregar (evita mostrar dados padrão/desatualizados).
+    function _sincronizarInfoLoja() {
+      const bt = document.getElementById("banner-texto");
+      if (bt) bt.textContent = CONFIG.loja.bannerTexto || CONFIG.loja.slogan;
+
+      const fn = document.getElementById("footer-nome");
+      if (fn) fn.textContent = `${CONFIG.loja.logo} ${CONFIG.loja.nome}`;
+
+      const fe = document.getElementById("footer-endereco");
+      if (fe) fe.textContent = CONFIG.contato.endereco;
+
+      const fc = document.getElementById("footer-cidade");
+      if (fc) fc.textContent = CONFIG.contato.cidade;
+
+      const fh = document.getElementById("footer-horario");
+      if (fh && CONFIG.funcionamento.horarios?.length) {
+        fh.textContent = CONFIG.funcionamento.horarios.map(h => `${h.dia}: ${h.hora}`).join(" | ");
+      }
+
+      const insta = document.getElementById("footer-insta");
+      if (insta && CONFIG.contato.instagram) {
+        insta.href = `https://instagram.com/${CONFIG.contato.instagram.replace("@","")}`;
+      }
+
+      const wpp = document.getElementById("footer-wpp");
+      if (wpp) wpp.href = `https://wa.me/${CONFIG.contato.whatsapp}`;
+
+      const sel = document.getElementById("cliente-pagamento");
+      if (sel && CONFIG.pagamento?.formas) {
+        sel.innerHTML = CONFIG.pagamento.formas.map(f => `<option value="${f}">${f}</option>`).join("");
+      }
+
+      const banner = document.getElementById("loja-banner");
+      if (banner && CONFIG.loja.banner) {
+        banner.style.backgroundImage = `url('${CONFIG.loja.banner}')`;
+      }
+    }
+    window._sincronizarInfoLoja = _sincronizarInfoLoja;
+
     document.addEventListener("DOMContentLoaded", () => {
-      setTimeout(() => {
-        const bt = document.getElementById("banner-texto");
-        if (bt) bt.textContent = CONFIG.loja.bannerTexto || CONFIG.loja.slogan;
-
-        const fn = document.getElementById("footer-nome");
-        if (fn) fn.textContent = `${CONFIG.loja.logo} ${CONFIG.loja.nome}`;
-
-        const fe = document.getElementById("footer-endereco");
-        if (fe) fe.textContent = CONFIG.contato.endereco;
-
-        const fc = document.getElementById("footer-cidade");
-        if (fc) fc.textContent = CONFIG.contato.cidade;
-
-        const fh = document.getElementById("footer-horario");
-        if (fh && CONFIG.funcionamento.horarios?.length) {
-          fh.textContent = CONFIG.funcionamento.horarios.map(h => `${h.dia}: ${h.hora}`).join(" | ");
-        }
-
-        const insta = document.getElementById("footer-insta");
-        if (insta && CONFIG.contato.instagram) {
-          insta.href = `https://instagram.com/${CONFIG.contato.instagram.replace("@","")}`;
-        }
-
-        const wpp = document.getElementById("footer-wpp");
-        if (wpp) wpp.href = `https://wa.me/${CONFIG.contato.whatsapp}`;
-
-        const sel = document.getElementById("cliente-pagamento");
-        if (sel && CONFIG.pagamento?.formas) {
-          sel.innerHTML = CONFIG.pagamento.formas.map(f => `<option value="${f}">${f}</option>`).join("");
-        }
-
-        const banner = document.getElementById("loja-banner");
-        if (banner && CONFIG.loja.banner) {
-          banner.style.backgroundImage = `url('${CONFIG.loja.banner}')`;
-        }
-      }, 100);
+      setTimeout(_sincronizarInfoLoja, 100);
     });
 
     function toggleBuscaMobile() {
