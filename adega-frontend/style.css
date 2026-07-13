@@ -18,7 +18,7 @@
   --surface: #1A1030;
   --surface2: #450505;
   --text: #F0EAF8;
-  --text-muted: #21a09a;
+  --text-muted: #7187b3;
   --border: rgba(255,255,255,0.08);
   --shadow: 0 8px 32px rgba(0,0,0,0.4);
   --radius: 16px;
@@ -657,7 +657,7 @@ h1, h2, h3, h4 { font-family: var(--font-display); }
   display: flex; align-items: center; justify-content: center; font-size: 36px;
 }
 .login-titulo { font-size: 24px; font-weight: 800; margin-bottom: 6px; }
-.login-sub { color: var(--text-muted); font-size: 13px; margin-bottom: 28px; }
+.login-sub { color: var(--text-muted); font-size: 13px; margin-bottom: 18px; margin-top: 20px; }
 .login-erro { color: var(--danger); font-size: 13px; margin-bottom: 12px; display: none; }
 
 /* ADMIN LAYOUT */
@@ -682,6 +682,15 @@ h1, h2, h3, h4 { font-family: var(--font-display); }
 }
 .sidebar-nome { font-family: var(--font-display); font-size: 16px; font-weight: 800; }
 .sidebar-badge { font-size: 11px; color: var(--primary); font-weight: 700; display: block; }
+
+/* Logo do sistema na tela de login (fundo transparente) */
+.login-logo-img {
+  max-width: 180px;
+  width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto 6px;
+}
 
 .adm-nav { flex: 1; padding: 16px 12px; overflow-y: auto; }
 
