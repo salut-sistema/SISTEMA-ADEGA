@@ -214,15 +214,10 @@ const UTIL = {
   },
   async verificarSenha(senha) {
     if (!senha) return false;
-    try {
-      // Valida a senha master no backend — o valor real vem de empresaConfig.js
-      // e nunca fica exposto/hardcoded no frontend.
-      const resposta = await API_SENHA_MASTER.validar(senha);
-      return !!(resposta && resposta.valida);
-    } catch (e) {
-      console.error("Erro ao validar senha master:", e.message);
-      return false;
-    }
+    // Deixa erros de conexão/servidor "vazarem" para quem chamou (MODAL),
+    // que sabe diferenciar isso de uma senha simplesmente incorreta.
+    const resposta = await API_SENHA_MASTER.validar(senha);
+    return !!(resposta && resposta.valida);
   },
   aplicarCores() {
     const r  = document.documentElement.style;
@@ -282,6 +277,7 @@ const MODAL = {
     if (tipo === "senha") {
       btn.onclick = async () => {
         const inputEl = document.getElementById("modal-senha-input");
+        const msgEl = overlay.querySelector(".modal-msg");
         const val = inputEl?.value;
         btn.disabled = true;
         try {
@@ -289,6 +285,13 @@ const MODAL = {
           const valida = await UTIL.verificarSenha(val);
           if (valida) { MODAL.fechar(); if (onConfirm) onConfirm(); }
           else { inputEl?.classList.add("input-erro"); MODAL.shake(); }
+        } catch (e) {
+          // Erro de conexão/servidor (ex: backend fora do ar ou desatualizado) —
+          // mostra mensagem distinta para não confundir com "senha errada"
+          console.error("Erro ao validar senha master:", e.message);
+          inputEl?.classList.add("input-erro");
+          MODAL.shake();
+          if (msgEl) msgEl.innerHTML = `⚠️ Não foi possível validar a senha (erro de conexão com o servidor). Verifique se o backend está no ar e tente novamente.`;
         } finally {
           btn.disabled = false;
         }
@@ -1636,6 +1639,8 @@ function cardPedido(p) {
         ${btnPago}
         <button class="btn-icon" title="Adicionar produto ao pedido"
           onclick="abrirAdicionarProdutoPedido('${p.id}')" style="background:rgba(91,45,142,.2);color:var(--primary,#5B2D8E);">➕</button>
+        <button class="btn-icon" title="Imprimir comprovante"
+          onclick="imprimirPedido('${p.id}')" style="background:rgba(91,45,142,.12);">🖨️</button>
         <button class="btn-icon btn-icon-del" title="Excluir pedido e estornar estoque"
           onclick="confirmarExcluirPedido('${p.id}')">🗑️</button>
       </div>
@@ -1674,6 +1679,117 @@ function renderizarAdmPedidos() {
     HISTORICO.renderizar();
   }
 }
+
+// ============================================================
+// COMPROVANTE DE IMPRESSÃO — Pedido individual
+// Segue o mesmo layout/dados exibidos no card de "Pedidos Recebidos".
+// Otimizado para impressoras térmicas (58mm/80mm) e compatível com A4:
+// as linhas separadoras usam borda CSS (não caracteres fixos), então
+// sempre preenchem a largura correta do papel, seja qual for o tamanho.
+// ============================================================
+function _formatarDataComprovante(d) {
+  const data = new Date(d);
+  const dataStr = data.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const horaStr = data.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return `${dataStr} às ${horaStr}`;
+}
+
+function _gerarComprovanteHTML(p) {
+  const nomeLoja   = UTIL.sanitize(CONFIG.loja.nome || "Loja");
+  const codigo     = (p.id || "").slice(-5).toUpperCase();
+  const clienteNome= UTIL.sanitize(p.cliente?.nome || "Cliente");
+  const dataTexto  = _formatarDataComprovante(p.data);
+  const tipoTexto  = p.tipoEntrega === "entrega" ? "🚚 Entrega" : "📦 Retirada";
+  const pagamento  = UTIL.sanitize(p.formaPagamento || "—");
+
+  const itensHTML = (p.itens || []).map(i => {
+    const complementosHTML = (i.complementos && i.complementos.length)
+      ? i.complementos.map(c => `<div class="comp-item-extra">+ ${UTIL.sanitize(c.nome)}</div>`).join("")
+      : "";
+    const obsHTML = i.observacao
+      ? `<div class="comp-item-obs">Obs: ${UTIL.sanitize(i.observacao)}</div>`
+      : "";
+    return `<div class="comp-item">${i.quantidade}x ${UTIL.sanitize(i.nome)}${i.tamanho ? " (" + UTIL.sanitize(i.tamanho) + ")" : ""}</div>${complementosHTML}${obsHTML}`;
+  }).join("");
+
+  const taxaHTML = (p.taxaEntrega && p.taxaEntrega > 0)
+    ? `<div class="comp-linha-info">Taxa de Entrega: ${UTIL.formatarMoeda(p.taxaEntrega)}</div>`
+    : "";
+
+  const enderecoBlocoHTML = p.tipoEntrega === "entrega"
+    ? `<div class="comp-linha-info">Endereço</div><div class="comp-linha-info">${UTIL.sanitize(p.endereco || "—")}</div>`
+    : `<div class="comp-linha-info">📦 Retirada no Local.</div>`;
+
+  return `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8"><title>Comprovante #${codigo}</title>
+<style>
+  @page { margin: 4mm; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #fff; color: #000; }
+  body { font-family: 'Courier New', Courier, monospace; display: flex; justify-content: center; }
+  .comprovante {
+    width: 100%;
+    max-width: 320px;   /* cabe em 58mm e 80mm; em A4 fica centralizado sem esticar */
+    padding: 10px 8px;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .comp-linha-dupla { border-top: 2px solid #000; margin: 6px 0; }
+  .comp-linha { border-top: 1px dashed #000; margin: 8px 0; }
+  .comp-nome-loja { text-align: center; font-weight: 700; font-size: 14px; text-transform: uppercase; padding: 4px 0; word-break: break-word; }
+  .comp-linha-info { margin: 3px 0; }
+  .comp-item { margin-top: 6px; }
+  .comp-item-extra, .comp-item-obs { padding-left: 14px; font-size: 11px; color: #333; }
+  .comp-total { font-weight: 700; font-size: 13px; margin-top: 4px; }
+  .comp-rodape { text-align: center; margin: 8px 0 2px; }
+  @media print { .comp-linha-dupla, .comp-linha { border-color: #000 !important; } }
+</style>
+</head>
+<body>
+  <div class="comprovante">
+    <div class="comp-linha-dupla"></div>
+    <div class="comp-nome-loja">${nomeLoja}</div>
+    <div class="comp-linha-dupla"></div>
+
+    <div class="comp-linha-info">Pedido #${codigo}</div>
+    <div class="comp-linha-info">Cliente: ${clienteNome}</div>
+    <div class="comp-linha-info">${dataTexto}</div>
+
+    <div class="comp-linha"></div>
+    ${itensHTML}
+    <div class="comp-linha"></div>
+
+    <div class="comp-linha-info">Tipo: ${tipoTexto}</div>
+    <div class="comp-linha-info">Pagamento: ${pagamento}</div>
+    ${taxaHTML}
+    <div class="comp-linha-info comp-total">Total: ${UTIL.formatarMoeda(p.total)}</div>
+    <div class="comp-linha"></div>
+
+    ${enderecoBlocoHTML}
+    <div class="comp-linha"></div>
+
+    <div class="comp-rodape">Obrigado pela preferência!</div>
+    <div class="comp-linha-dupla"></div>
+  </div>
+  <script>
+    window.onload = function () { window.focus(); window.print(); };
+  </script>
+</body></html>`;
+}
+
+// Imprime apenas o pedido correspondente — abre uma janela isolada com o
+// comprovante e aciona a caixa de diálogo de impressão do navegador.
+function imprimirPedido(id) {
+  const pedidos = STATE.get("pedidos") || [];
+  const p = pedidos.find(x => x.id === id);
+  if (!p) { MODAL.erro("Pedido não encontrado para impressão."); return; }
+  const win = window.open("", "_blank", "width=380,height=640");
+  if (!win) { MODAL.erro("Não foi possível abrir a janela de impressão. Verifique o bloqueador de pop-ups do navegador."); return; }
+  win.document.open();
+  win.document.write(_gerarComprovanteHTML(p));
+  win.document.close();
+}
+window.imprimirPedido = imprimirPedido;
 
 function confirmarExcluirPedido(id) {
   MODAL.pedirSenha("Excluir Pedido", () => {
@@ -2066,7 +2182,6 @@ function preencherFormProduto(p) {
 function preencherFormConfig() {
   const s = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ""; };
   s("cfg-nome", CONFIG.loja.nome); s("cfg-slogan", CONFIG.loja.slogan);
-  s("cfg-logo", CONFIG.loja.logo);
   // Preenche uploads de logo e banner
   if (typeof _preencherLogoUrl === "function") _preencherLogoUrl(CONFIG.loja.logoUrl || "");
   else { const el = document.getElementById("cfg-logoUrl"); if (el) el.value = CONFIG.loja.logoUrl || ""; }
@@ -2132,7 +2247,7 @@ function salvarConfig() {
   MODAL.pedirSenha("Salvar Configurações", () => {
     const g = id => document.getElementById(id)?.value || "";
     CONFIG.loja.nome = g("cfg-nome"); CONFIG.loja.slogan = g("cfg-slogan");
-    CONFIG.loja.logo = g("cfg-logo"); CONFIG.loja.logoUrl = g("cfg-logoUrl");
+    CONFIG.loja.logoUrl = g("cfg-logoUrl");
     CONFIG.loja.banner = g("cfg-banner");
     CONFIG.loja.corPrimaria = g("cfg-cor-primary"); CONFIG.loja.corSecundaria = g("cfg-cor-secondary");
     CONFIG.loja.corFundo = g("cfg-cor-bg"); CONFIG.loja.corSuperficie = g("cfg-cor-surface");
