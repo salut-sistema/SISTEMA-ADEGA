@@ -1658,6 +1658,9 @@ function cardPedido(p) {
       <span>${p.tipoEntrega === "entrega" ? " Entrega" : " Retirada"} | ${p.formaPagamento || "—"}</span>
       <strong>${UTIL.formatarMoeda(p.total)}</strong>
     </div>
+    ${p.tipoEntrega === "entrega"
+      ? `<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Taxa de entrega: <strong>${p.taxaEntrega ? UTIL.formatarMoeda(p.taxaEntrega) : "Grátis"}</strong></div>`
+      : ""}
     ${p.tipoEntrega === "entrega" && p.endereco
       ? `<div style="font-size:12px;color:var(--text-muted);margin-top:6px;"> ${UTIL.sanitize(p.endereco)}</div>`
       : ""}
