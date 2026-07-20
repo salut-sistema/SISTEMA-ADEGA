@@ -7,7 +7,7 @@ const CONFIG = {
   loja: {
     nome: "Açaí & Cia",
     slogan: "Adega, tabacaria e muito mais!",
-    logo: "🍇",
+    logo: "",
     logoUrl: "",
     banner: "",
     bannerTexto: "Açaí com frutas selecionadas e muito mais!",
@@ -1632,6 +1632,16 @@ function cardPedido(p, somenteLeitura = false) {
     ? `<span class="badge-danger" title="Excluído de 'Pedidos Recebidos' em ${UTIL.formatarData(p.dataExclusao)}">🗑️ Pedido Excluído</span>`
     : "";
 
+  // Sino piscando — aparece só em "Pedidos Recebidos" (nunca no Histórico),
+  // enquanto o pedido ainda não foi visualizado/clicado pelo admin. Ele
+  // pisca junto com o som, pra indicar de onde vem o barulho. Clicar nele
+  // (ou em qualquer parte do card) marca o pedido como visto e para o som.
+  const naoVisto = !somenteLeitura && window.PEDIDOS_NAO_VISTOS && window.PEDIDOS_NAO_VISTOS.has(p.id);
+  const sinoNotificacao = naoVisto
+    ? `<span class="sino-notificacao" title="Pedido novo — clique para marcar como visto e parar o som"
+         onclick="event.stopPropagation(); marcarPedidoVisto('${p.id}')">🔔</span>`
+    : "";
+
   // No Histórico (somenteLeitura) não existe nenhum botão de ação — é uma
   // trilha de auditoria, apenas para consulta, para evitar fraude.
   const botoesAcao = somenteLeitura ? "" : `
@@ -1644,7 +1654,7 @@ function cardPedido(p, somenteLeitura = false) {
           onclick="confirmarExcluirPedido('${p.id}')">🗑️</button>`;
 
   return `
-  <div class="pedido-card">
+  <div class="pedido-card${naoVisto ? " pedido-nao-visto" : ""}"${naoVisto ? ` onclick="marcarPedidoVisto('${p.id}')"` : ""}>
     <div class="pedido-header">
       <div>
         <strong>${UTIL.sanitize(p.cliente?.nome || "—")}</strong>
@@ -1655,6 +1665,7 @@ function cardPedido(p, somenteLeitura = false) {
         <small style="color:var(--text-muted); display:block;">${UTIL.formatarData(p.data)}</small>
       </div>
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        ${sinoNotificacao}
         <span class="badge-${corBadge}">${p.status}</span>
         ${p.origem === "manual" ? `<span class="badge-primary" title="Venda registrada pelo administrador (balcão)">🧑‍💼 Presencial</span>` : ""}
         ${badgeExcluido}${botoesAcao}

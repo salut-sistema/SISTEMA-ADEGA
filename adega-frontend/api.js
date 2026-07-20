@@ -125,6 +125,69 @@ const API_ESTOQUE_BASE = {
 let _pollingInterval = null;
 let _ultimoPedidoData = null; // controla se há pedidos novos
 
+// ── Sino + som de notificação de pedido novo ──────────────────
+// Enquanto existir pelo menos 1 pedido "não visto" pelo admin, o sino 🔔
+// pisca no card do pedido (Pedidos Recebidos) E o som repete em loop.
+// Assim que o admin clica no sino ou em qualquer parte do card daquele
+// pedido, ele é marcado como "visto": o sino some e, se não sobrar
+// nenhum outro pedido pendente, o som para.
+window.PEDIDOS_NAO_VISTOS = new Set();
+let _somLoopInterval = null;
+
+let _audioCtx = null;
+function _tocarSomNotificacaoPedido() {
+  try {
+    if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_audioCtx.state === "suspended") _audioCtx.resume();
+
+    const now = _audioCtx.currentTime;
+    // Duas notas curtas, estilo "campainha" (dim-dom)
+    [880, 660].forEach((freq, i) => {
+      const osc  = _audioCtx.createOscillator();
+      const gain = _audioCtx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      const inicio = now + i * 0.18;
+      gain.gain.setValueAtTime(0.0001, inicio);
+      gain.gain.exponentialRampToValueAtTime(0.35, inicio + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, inicio + 0.16);
+      osc.connect(gain).connect(_audioCtx.destination);
+      osc.start(inicio);
+      osc.stop(inicio + 0.2);
+    });
+  } catch (e) {
+    console.warn("Não foi possível tocar o som de notificação:", e);
+  }
+}
+
+// Liga o loop do som (se ainda não estiver ligado) — repete a cada 4s
+// enquanto houver pedido(s) não visto(s).
+function _iniciarLoopSomNotificacao() {
+  if (_somLoopInterval) return; // já está rodando
+  _tocarSomNotificacaoPedido(); // toca imediatamente a primeira vez
+  _somLoopInterval = setInterval(() => {
+    if (window.PEDIDOS_NAO_VISTOS.size === 0) {
+      clearInterval(_somLoopInterval);
+      _somLoopInterval = null;
+      return;
+    }
+    _tocarSomNotificacaoPedido();
+  }, 4000);
+}
+
+// Chamada quando o admin clica no sino 🔔 ou no card do pedido.
+// Remove o pedido da lista de "não vistos" e para o som se não sobrar mais nenhum.
+function marcarPedidoVisto(id) {
+  if (!window.PEDIDOS_NAO_VISTOS.has(id)) return;
+  window.PEDIDOS_NAO_VISTOS.delete(id);
+  if (window.PEDIDOS_NAO_VISTOS.size === 0 && _somLoopInterval) {
+    clearInterval(_somLoopInterval);
+    _somLoopInterval = null;
+  }
+  if (typeof renderizarAdmPedidos === "function") renderizarAdmPedidos();
+}
+window.marcarPedidoVisto = marcarPedidoVisto;
+
 function _iniciarPolling() {
   if (_pollingInterval) return;
 
@@ -135,6 +198,14 @@ function _iniciarPolling() {
 
       if (pedidos.length !== atual.length) {
         const novos = pedidos.length - atual.length;
+
+        // Descobre quais pedidos são realmente novos (por id) para marcar
+        // como "não vistos" — faz o sino piscar neles até o admin clicar.
+        const idsAntigos = new Set(atual.map(p => p.id));
+        pedidos.forEach(p => {
+          if (!idsAntigos.has(p.id)) window.PEDIDOS_NAO_VISTOS.add(p.id);
+        });
+
         STATE.set("pedidos", pedidos);
 
         // Sincroniza também produtos (para atualizar estoque e vendas)
@@ -145,8 +216,11 @@ function _iniciarPolling() {
         STATE.set("produtos",      produtos      || []);
         STATE.set("estoquesBases", estoquesBases || []);
 
-        // Notificação e atualização da interface
-        if (novos > 0) MODAL.toast(`🔔 ${novos} novo(s) pedido(s) recebido(s)!`);
+        // Notificação (som em loop + aviso visual) e atualização da interface
+        if (novos > 0) {
+          MODAL.toast(`🔔 ${novos} novo(s) pedido(s) recebido(s)!`);
+          _iniciarLoopSomNotificacao();
+        }
 
         if (typeof renderizarAdmin === "function") renderizarAdmin();
         if (typeof DASHBOARD !== "undefined")      DASHBOARD.atualizar();

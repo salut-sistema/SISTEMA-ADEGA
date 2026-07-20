@@ -610,6 +610,22 @@ h1, h2, h3, h4 { font-family: var(--font-display); }
   50% { box-shadow: 0 8px 32px rgba(37,211,102,0.6), 0 0 0 10px rgba(37,211,102,0.1); }
 }
 
+/* SINO DE NOTIFICAÇÃO — pedido novo ainda não visualizado pelo admin */
+.sino-notificacao {
+  cursor: pointer; font-size: 20px; line-height: 1;
+  animation: sino-piscar 0.9s infinite;
+  filter: drop-shadow(0 0 4px rgba(255,193,7,0.7));
+}
+@keyframes sino-piscar {
+  0%,100% { opacity: 1;   transform: rotate(0deg) scale(1); }
+  25%     { opacity: .55; transform: rotate(-15deg) scale(1.1); }
+  75%     { opacity: .55; transform: rotate(15deg) scale(1.1); }
+}
+.pedido-card.pedido-nao-visto {
+  border: 1px solid #ffc107;
+  box-shadow: 0 0 0 3px rgba(255,193,7,0.15);
+}
+
 /* FOOTER */
 .cliente-footer {
   background: var(--surface); border-top: 1px solid var(--border);
