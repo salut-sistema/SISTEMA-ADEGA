@@ -2,7 +2,7 @@
 // middleware/auth.js — Autenticação e isolamento multi-tenant
 // Valida o token da empresa e injeta empresaId em req.empresaId
 // ============================================================
-const EMPRESAS = require("../empresas.config");
+const { EMPRESAS } = require("../empresasConfig");
 
 // Verifica se empresa está ativa e no prazo
 function empresaValida(empresa) {

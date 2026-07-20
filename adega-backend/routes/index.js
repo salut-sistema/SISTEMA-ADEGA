@@ -6,7 +6,7 @@ const express     = require("express");
 const router      = express.Router();
 const { Produto, EstoqueBase, Categoria, Complemento, Pedido, Config } = require("../models");
 const { authMiddleware, EMPRESAS, empresaValida } = require("../middleware/auth");
-const { SENHA_MASTER } = require("../empresaConfig");
+const { SENHA_MASTER } = require("../empresasConfig");
 
 // Helpers de resposta padronizada
 const ok  = (res, data)         => res.json({ sucesso: true, data });
