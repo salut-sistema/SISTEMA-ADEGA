@@ -7,7 +7,7 @@ const CONFIG = {
   loja: {
     nome: "Açaí & Cia",
     slogan: "Adega, tabacaria e muito mais!",
-    logo: "",
+    logo: "🍇",
     logoUrl: "",
     banner: "",
     bannerTexto: "Açaí com frutas selecionadas e muito mais!",
@@ -1246,7 +1246,7 @@ function cardProduto(p) {
       : `<span class="pc-emoji">${p.emoji || "🛍️"}</span>`}</div>
     <div class="pc-body">
       <h3>${UTIL.sanitize(p.nome)}</h3>
-      ${p.descricao ? `<p>${UTIL.sanitize(p.descricao)}</p>` : ""}
+      <p class="pc-desc">${p.descricao ? UTIL.sanitize(p.descricao) : ""}</p>
       <div class="pc-footer">
         ${precoLabel}
         <button class="btn-add" onclick="event.stopPropagation();abrirModalProduto('${p.id}')">+</button>
