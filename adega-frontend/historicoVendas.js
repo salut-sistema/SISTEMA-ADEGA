@@ -48,7 +48,7 @@ const HISTORICO = {
     if (!container) return;
     const lista = this.listaFiltrada();
     container.innerHTML = lista.length
-      ? lista.map(p => (typeof cardPedido === "function" ? cardPedido(p) : "")).join("")
+      ? lista.map(p => (typeof cardPedido === "function" ? cardPedido(p, true) : "")).join("")
       : `<p class="sem-dados">Nenhum pedido encontrado.</p>`;
   },
 

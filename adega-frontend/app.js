@@ -716,22 +716,22 @@ const DASHBOARD = {
   faturamentoDia() {
     const hoje = UTIL.hoje();
     return STATE.get("pedidos")
-      .filter(p => p.data?.startsWith(hoje) && p.status !== ENUMS.STATUS_PEDIDO.CANCELADO)
+      .filter(p => p.data?.startsWith(hoje) && p.status !== ENUMS.STATUS_PEDIDO.CANCELADO && !p.excluido)
       .reduce((s, p) => s + (p.total || 0), 0);
   },
   faturamentoMes() {
     const mes = UTIL.mesAtual();
     return STATE.get("pedidos")
-      .filter(p => p.data?.startsWith(mes) && p.status !== ENUMS.STATUS_PEDIDO.CANCELADO)
+      .filter(p => p.data?.startsWith(mes) && p.status !== ENUMS.STATUS_PEDIDO.CANCELADO && !p.excluido)
       .reduce((s, p) => s + (p.total || 0), 0);
   },
   faturamentoAno() {
     const ano = UTIL.anoAtual();
     return STATE.get("pedidos")
-      .filter(p => p.data?.startsWith(ano) && p.status !== ENUMS.STATUS_PEDIDO.CANCELADO)
+      .filter(p => p.data?.startsWith(ano) && p.status !== ENUMS.STATUS_PEDIDO.CANCELADO && !p.excluido)
       .reduce((s, p) => s + (p.total || 0), 0);
   },
-  totalPedidos() { return STATE.get("pedidos").length; },
+  totalPedidos() { return STATE.get("pedidos").filter(p => !p.excluido).length; },
   atualizar() {
     const s = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
     s("fat-dia", UTIL.formatarMoeda(this.faturamentoDia()));
@@ -1615,16 +1615,33 @@ window.editarComplemento = editarComplemento;
 // ADMIN — Pedidos
 // ── Card de um pedido — reaproveitado em "Pedidos Recebidos" e no
 // novo "Histórico de Vendas" (historicoVendas.js), sem duplicar HTML.
-function cardPedido(p) {
+function cardPedido(p, somenteLeitura = false) {
   const corBadge = p.status === "cancelado" ? "danger"
     : p.status === "entregue" || p.status === "pago" ? "success"
     : "warning";
 
-  const btnPago = (p.status !== "pago" && p.status !== "entregue" && p.status !== "cancelado")
+  const btnPago = (!somenteLeitura && p.status !== "pago" && p.status !== "entregue" && p.status !== "cancelado")
     ? `<button class="btn btn-outline btn-sm" style="color:#4caf50;border-color:#4caf50;font-size:11px;"
          title="Marcar como pago"
          onclick="marcarPedidoPago('${p.id}')">✅ Pago</button>`
     : "";
+
+  // Selo informativo (sem função/clique) — aparece só no Histórico, quando o
+  // pedido foi excluído em "Pedidos Recebidos". A informação nunca é apagada.
+  const badgeExcluido = p.excluido
+    ? `<span class="badge-danger" title="Excluído de 'Pedidos Recebidos' em ${UTIL.formatarData(p.dataExclusao)}">🗑️ Pedido Excluído</span>`
+    : "";
+
+  // No Histórico (somenteLeitura) não existe nenhum botão de ação — é uma
+  // trilha de auditoria, apenas para consulta, para evitar fraude.
+  const botoesAcao = somenteLeitura ? "" : `
+        ${btnPago}
+        <button class="btn-icon" title="Adicionar produto ao pedido"
+          onclick="abrirAdicionarProdutoPedido('${p.id}')" style="background:rgba(91,45,142,.2);color:var(--primary,#5B2D8E);">➕</button>
+        <button class="btn-icon" title="Imprimir comprovante"
+          onclick="imprimirPedido('${p.id}')" style="background:rgba(91,45,142,.12);">🖨️</button>
+        <button class="btn-icon btn-icon-del" title="Excluir pedido e estornar estoque"
+          onclick="confirmarExcluirPedido('${p.id}')">🗑️</button>`;
 
   return `
   <div class="pedido-card">
@@ -1640,13 +1657,7 @@ function cardPedido(p) {
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
         <span class="badge-${corBadge}">${p.status}</span>
         ${p.origem === "manual" ? `<span class="badge-primary" title="Venda registrada pelo administrador (balcão)">🧑‍💼 Presencial</span>` : ""}
-        ${btnPago}
-        <button class="btn-icon" title="Adicionar produto ao pedido"
-          onclick="abrirAdicionarProdutoPedido('${p.id}')" style="background:rgba(91,45,142,.2);color:var(--primary,#5B2D8E);">➕</button>
-        <button class="btn-icon" title="Imprimir comprovante"
-          onclick="imprimirPedido('${p.id}')" style="background:rgba(91,45,142,.12);">🖨️</button>
-        <button class="btn-icon btn-icon-del" title="Excluir pedido e estornar estoque"
-          onclick="confirmarExcluirPedido('${p.id}')">🗑️</button>
+        ${badgeExcluido}${botoesAcao}
       </div>
     </div>
     <div class="pedido-itens">
@@ -1669,11 +1680,13 @@ function cardPedido(p) {
 
 function renderizarAdmPedidos() {
   const activeContainer = document.getElementById("pedidos-recebidos-lista");
-  const pedidos = [...STATE.get("pedidos")].sort((a, b) => {
-    const da = new Date(a.data || a.createdAt || 0).getTime();
-    const db = new Date(b.data || b.createdAt || 0).getTime();
-    return db - da; // mais recente primeiro
-  });
+  const pedidos = [...STATE.get("pedidos")]
+    .filter(p => !p.excluido) // pedidos excluídos somem daqui, mas continuam no Histórico
+    .sort((a, b) => {
+      const da = new Date(a.data || a.createdAt || 0).getTime();
+      const db = new Date(b.data || b.createdAt || 0).getTime();
+      return db - da; // mais recente primeiro
+    });
 
   if (activeContainer) {
     activeContainer.innerHTML = pedidos.length
@@ -1802,8 +1815,12 @@ function confirmarExcluirPedido(id) {
   MODAL.pedirSenha("Excluir Pedido", () => {
     MODAL.confirmar("Excluir este pedido? O estoque será revertido automaticamente e o faturamento será atualizado.", async () => {
       try {
-        await API_PEDIDOS.excluir(id);
-        STATE.update("pedidos", lista => lista.filter(p => p.id !== id));
+        const pedidoExcluido = await API_PEDIDOS.excluir(id);
+        // Não remove o pedido do estado: apenas atualiza (excluido:true), pois
+        // o registro deve continuar existindo no "Histórico de Vendas" como
+        // trilha de auditoria. Ele só some da lista de "Pedidos Recebidos"
+        // (renderizarAdmPedidos já filtra os que têm excluido:true).
+        STATE.update("pedidos", lista => lista.map(p => p.id === id ? { ...p, ...pedidoExcluido } : p));
         // Recarrega produtos para refletir estorno de estoque e vendas
         const [produtosAtualizados, estoquesBases] = await Promise.all([
           API_PRODUTOS.listar(),

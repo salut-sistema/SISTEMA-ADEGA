@@ -367,16 +367,24 @@ router.put("/pedidos/:id/status", async (req, res) => {
   } catch (e) { err(res, e.message); }
 });
 
-// DELETE /api/pedidos/:id — remove pedido e repõe estoque
+// DELETE /api/pedidos/:id — marca o pedido como excluído (soft delete) e repõe estoque
+// IMPORTANTE: o registro NUNCA é removido do banco. Ele some da aba "Pedidos
+// Recebidos", mas continua existindo (com excluido:true) para a aba "Histórico
+// de Vendas", que funciona como trilha de auditoria e controle de fraude.
 router.delete("/pedidos/:id", async (req, res) => {
   try {
     const pedido = await Pedido.findOne({ empresaId: req.empresaId, id: req.params.id });
     if (!pedido) return err(res, "Pedido não encontrado", 404);
+    if (pedido.excluido) return err(res, "Pedido já estava excluído", 400);
 
     // Repõe o estoque ao cancelar/excluir pedido
     await _reporEstoque(req.empresaId, pedido.itens);
-    await Pedido.deleteOne({ empresaId: req.empresaId, id: req.params.id });
-    ok(res, { id: req.params.id });
+
+    pedido.excluido = true;
+    pedido.dataExclusao = new Date().toISOString();
+    await pedido.save();
+
+    ok(res, pedido);
   } catch (e) { err(res, e.message); }
 });
 
@@ -412,7 +420,7 @@ router.get("/dashboard", async (req, res) => {
     const anoStr = diaStr.substring(0, 4);               // "2025"
 
     const [pedidos, produtos, estoquesBases] = await Promise.all([
-      Pedido.find({ empresaId: req.empresaId }).lean(),
+      Pedido.find({ empresaId: req.empresaId, excluido: { $ne: true } }).lean(),
       Produto.find({ empresaId: req.empresaId }).lean(),
       EstoqueBase.find({ empresaId: req.empresaId }).lean(),
     ]);

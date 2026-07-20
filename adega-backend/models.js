@@ -114,6 +114,14 @@ const PedidoSchema = new mongoose.Schema({
   itens:          [ItemPedidoSchema],
   // "loja" = pedido feito pelo cliente | "manual" = venda registrada pelo admin (balcão/presencial)
   origem:         { type: String, default: "loja" },
+
+  // ── Exclusão lógica (soft delete) ─────────────────────────────
+  // Quando o admin exclui um pedido em "Pedidos Recebidos", o registro
+  // NUNCA é apagado do banco — apenas marcado como excluído. Isso mantém
+  // a aba "Histórico de Vendas" como uma trilha de auditoria confiável
+  // (controle de fraude), com todas as informações originais preservadas.
+  excluido:       { type: Boolean, default: false },
+  dataExclusao:   { type: String, default: null },
 }, { timestamps: true });
 
 PedidoSchema.index({ empresaId: 1, id: 1 }, { unique: true });

@@ -1030,6 +1030,7 @@
           `Total: ${UTIL.formatarMoeda(p.total)}`,
         ];
         if (p.tipoEntrega === "entrega" && p.endereco) linhas.push(`Endereço: ${p.endereco}`);
+        if (p.excluido) linhas.push(`*** PEDIDO EXCLUÍDO em ${UTIL.formatarData(p.dataExclusao)} ***`);
         return linhas.join("\n");
       });
 
