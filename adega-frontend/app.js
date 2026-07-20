@@ -1631,6 +1631,10 @@ function cardPedido(p) {
     <div class="pedido-header">
       <div>
         <strong>${UTIL.sanitize(p.cliente?.nome || "—")}</strong>
+        <small style="color:var(--primary,#5B2D8E);font-weight:700;display:block;">
+          Pedido #${p.numeroPedido != null ? String(p.numeroPedido).padStart(3, "0") : "—"}
+        </small>
+        ${p.cliente?.telefone ? `<small style="color:var(--text-muted); display:block;"> ${UTIL.sanitize(p.cliente.telefone)}</small>` : ""}
         <small style="color:var(--text-muted); display:block;">${UTIL.formatarData(p.data)}</small>
       </div>
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
@@ -1647,15 +1651,15 @@ function cardPedido(p) {
     </div>
     <div class="pedido-itens">
       ${(p.itens || []).map(i =>
-        `<small>• ${i.quantidade}x ${UTIL.sanitize(i.nome)}${i.tamanho ? ` (${i.tamanho})` : ""}</small>`
+        `<small>• ${i.quantidade}x ${UTIL.sanitize(i.nome)}${i.tamanho ? ` (${i.tamanho})` : ""} — <strong>${UTIL.formatarMoeda(i.preco)}</strong> un.</small>`
       ).join("")}
     </div>
     <div class="pedido-footer">
-      <span>${p.tipoEntrega === "entrega" ? "🚚 Entrega" : "🏪 Retirada"} | ${p.formaPagamento || "—"}</span>
+      <span>${p.tipoEntrega === "entrega" ? " Entrega" : " Retirada"} | ${p.formaPagamento || "—"}</span>
       <strong>${UTIL.formatarMoeda(p.total)}</strong>
     </div>
     ${p.tipoEntrega === "entrega" && p.endereco
-      ? `<div style="font-size:12px;color:var(--text-muted);margin-top:6px;">📍 ${UTIL.sanitize(p.endereco)}</div>`
+      ? `<div style="font-size:12px;color:var(--text-muted);margin-top:6px;"> ${UTIL.sanitize(p.endereco)}</div>`
       : ""}
   </div>`;
 }

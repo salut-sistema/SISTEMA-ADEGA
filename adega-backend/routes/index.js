@@ -4,7 +4,7 @@
 // ============================================================
 const express     = require("express");
 const router      = express.Router();
-const { Produto, EstoqueBase, Categoria, Complemento, Pedido, Config } = require("../models");
+const { Produto, EstoqueBase, Categoria, Complemento, Pedido, Config, Contador } = require("../models");
 const { authMiddleware, EMPRESAS, empresaValida } = require("../middleware/auth");
 const { SENHA_MASTER } = require("../empresasConfig");
 
@@ -14,6 +14,18 @@ const err = (res, msg, st = 500) => res.status(st).json({ sucesso: false, erro: 
 
 // ── Gerador de ID único simples ───────────────────────────────
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+// ── Gerador do número sequencial do pedido (por empresa) ─────
+// Atômico via $inc — seguro mesmo com pedidos simultâneos, e nunca
+// repete ou reaproveita números (mesmo que um pedido seja excluído depois).
+async function proximoNumeroPedido(empresaId) {
+  const contador = await Contador.findOneAndUpdate(
+    { empresaId, tipo: "pedido" },
+    { $inc: { valor: 1 } },
+    { upsert: true, new: true }
+  );
+  return contador.valor;
+}
 
 // ============================================================
 // ROTAS PÚBLICAS (sem autenticação)
@@ -59,7 +71,8 @@ router.post("/pedidos/publico/:slug", async (req, res) => {
     if (!empresa || !empresaValida(empresa)) return err(res, "Loja não encontrada", 404);
 
     const eId = empresa.empresaId;
-    const pedido = await Pedido.create({ ...req.body, empresaId: eId });
+    const numeroPedido = await proximoNumeroPedido(eId);
+    const pedido = await Pedido.create({ ...req.body, empresaId: eId, numeroPedido });
 
     // Desconta estoque de cada item do pedido
     await _descontarEstoque(eId, pedido.itens);
@@ -307,7 +320,8 @@ router.get("/pedidos", async (req, res) => {
 // POST /api/pedidos — cria pedido e desconta estoque automaticamente
 router.post("/pedidos", async (req, res) => {
   try {
-    const pedido = await Pedido.create({ ...req.body, empresaId: req.empresaId });
+    const numeroPedido = await proximoNumeroPedido(req.empresaId);
+    const pedido = await Pedido.create({ ...req.body, empresaId: req.empresaId, numeroPedido });
     await _descontarEstoque(req.empresaId, pedido.itens);
     ok(res, pedido);
   } catch (e) { err(res, e.message); }

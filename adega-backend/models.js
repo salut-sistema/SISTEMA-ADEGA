@@ -101,6 +101,7 @@ const ItemPedidoSchema = new mongoose.Schema({
 const PedidoSchema = new mongoose.Schema({
   empresaId:      { type: String, required: true, index: true },
   id:             { type: String, required: true },
+  numeroPedido:   { type: Number },   // número sequencial exibido ao usuário (001, 002, 003...), por empresa
   status:         { type: String, default: "pendente" },
   tipoEntrega:    String,
   formaPagamento: String,
@@ -116,6 +117,16 @@ const PedidoSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 PedidoSchema.index({ empresaId: 1, id: 1 }, { unique: true });
+
+// ── CONTADOR — usado para gerar o número sequencial do pedido (por empresa) ──
+// Incrementado de forma atômica (evita números repetidos mesmo com pedidos
+// simultâneos). Nunca reaproveita números, mesmo se um pedido for excluído.
+const ContadorSchema = new mongoose.Schema({
+  empresaId: { type: String, required: true },
+  tipo:      { type: String, required: true, default: "pedido" },
+  valor:     { type: Number, default: 0 },
+});
+ContadorSchema.index({ empresaId: 1, tipo: 1 }, { unique: true });
 
 // ── CONFIGURAÇÃO DA LOJA ──────────────────────────────────────
 const ConfigSchema = new mongoose.Schema({
@@ -136,4 +147,5 @@ module.exports = {
   Complemento:  mongoose.model("Complemento",  ComplementoSchema),
   Pedido:       mongoose.model("Pedido",       PedidoSchema),
   Config:       mongoose.model("Config",       ConfigSchema),
+  Contador:     mongoose.model("Contador",     ContadorSchema),
 };
