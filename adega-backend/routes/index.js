@@ -179,10 +179,9 @@ router.post("/estoque-base", async (req, res) => {
       empresaId: req.empresaId,
       id: uid(),
       nome, unidade,
-      quantidade: Number(quantidade) || 0,
+      quantidade: _round3(quantidade),
       movimentacoes: [{
-        tipo: "entrada", quantidade: Number(quantidade) || 0,
-        descricao: "Estoque inicial", data: new Date().toISOString()
+        tipo: "entrada", quantidade: _round3(quantidade),
       }]
     });
     ok(res, eb);
@@ -192,8 +191,10 @@ router.post("/estoque-base", async (req, res) => {
 // PUT /api/estoque-base/:id — edita estoque-base
 router.put("/estoque-base/:id", async (req, res) => {
   try {
+    const dados = { ...req.body };
+    if (dados.quantidade !== undefined) dados.quantidade = _round3(dados.quantidade);
     const eb = await EstoqueBase.findOneAndUpdate(
-      { empresaId: req.empresaId, id: req.params.id }, req.body, { new: true }
+      { empresaId: req.empresaId, id: req.params.id }, dados, { new: true }
     );
     if (!eb) return err(res, "Estoque-base não encontrado", 404);
     ok(res, eb);
@@ -217,9 +218,9 @@ router.patch("/estoque-base/:id/movimentar", async (req, res) => {
     if (!eb) return err(res, "Estoque-base não encontrado", 404);
 
     const qtd = Number(quantidade) || 0;
-    if (tipo === "entrada") eb.quantidade += qtd;
-    else if (tipo === "saida") eb.quantidade = Math.max(0, eb.quantidade - qtd);
-    else if (tipo === "ajuste") eb.quantidade = qtd;
+    if (tipo === "entrada") eb.quantidade = _round3(eb.quantidade + qtd);
+    else if (tipo === "saida") eb.quantidade = _round3(Math.max(0, eb.quantidade - qtd));
+    else if (tipo === "ajuste") eb.quantidade = _round3(qtd);
 
     eb.movimentacoes.push({ tipo, quantidade: qtd, descricao: descricao || "", data: new Date().toISOString() });
     await eb.save();
@@ -506,6 +507,12 @@ function _converterParaKgOuL(quantidade, unidadeStr) {
 }
 
 // Converte uma quantidade + unidade direta (g, kg, ml) para kg ou L
+// Arredonda para 3 casas decimais — evita erros de ponto flutuante
+// acumulados (ex: 7.6999999999999975) toda vez que o estoque é alterado.
+function _round3(n) {
+  return Math.round((Number(n) || 0) * 1000) / 1000;
+}
+
 function _converterFatorParaKgOuL(qtd, unidade) {
   const u = (unidade || "").toLowerCase().trim();
   switch (u) {
@@ -536,7 +543,7 @@ async function _descontarEstoque(empresaId, itens = []) {
 
       const eb = await EstoqueBase.findOne({ empresaId, id: prod.estoqueBaseId });
       if (eb) {
-        eb.quantidade = Math.max(0, eb.quantidade - consumoKgL);
+        eb.quantidade = _round3(Math.max(0, eb.quantidade - consumoKgL));
         eb.movimentacoes.push({
           tipo: "saida", quantidade: consumoKgL,
           descricao: `Venda: ${item.quantidade}x ${prod.nome} (${unidade})`,
@@ -569,7 +576,7 @@ async function _descontarEstoque(empresaId, itens = []) {
         const totalConsumo = fator * item.quantidade;
         const eb = await EstoqueBase.findOne({ empresaId, id: c.estoqueBaseId });
         if (eb) {
-          eb.quantidade = Math.max(0, eb.quantidade - totalConsumo);
+          eb.quantidade = _round3(Math.max(0, eb.quantidade - totalConsumo));
           eb.movimentacoes.push({
             tipo: "saida", quantidade: totalConsumo,
             descricao: `Complemento: ${item.quantidade}x ${c.nome} (${c.consumoQtd}${c.consumoUnidade})`,
@@ -599,7 +606,7 @@ async function _reporEstoque(empresaId, itens = []) {
 
       const eb = await EstoqueBase.findOne({ empresaId, id: prod.estoqueBaseId });
       if (eb) {
-        eb.quantidade += consumoKgL;
+        eb.quantidade = _round3(eb.quantidade + consumoKgL);
         eb.movimentacoes.push({
           tipo: "entrada", quantidade: consumoKgL,
           descricao: `Cancelamento: ${item.quantidade}x ${prod.nome}`,
@@ -626,7 +633,7 @@ async function _reporEstoque(empresaId, itens = []) {
         const totalConsumo = fator * item.quantidade;
         const eb = await EstoqueBase.findOne({ empresaId, id: c.estoqueBaseId });
         if (eb) {
-          eb.quantidade += totalConsumo;
+          eb.quantidade = _round3(eb.quantidade + totalConsumo);
           eb.movimentacoes.push({
             tipo: "entrada", quantidade: totalConsumo,
             descricao: `Cancelamento complemento: ${item.quantidade}x ${c.nome}`,

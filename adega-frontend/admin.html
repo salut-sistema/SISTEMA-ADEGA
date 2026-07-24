@@ -1107,7 +1107,8 @@
        ============================================================ -->
   <div id="modal-novo-estoque-base" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;align-items:center;justify-content:center;">
     <div style="background:var(--surface,#1A1030);border-radius:16px;padding:28px;width:90%;max-width:440px;border:1px solid var(--primary,#5B2D8E);">
-      <h3 style="margin:0 0 20px;">⚖️ Novo Estoque-Base</h3>
+      <h3 id="modal-eb-titulo" style="margin:0 0 20px;">⚖️ Novo Estoque-Base</h3>
+      <input type="hidden" id="eb-id">
       <div class="form-grupo" style="margin-bottom:14px;">
         <label>Nome do estoque *</label>
         <input type="text" id="eb-nome" placeholder="Ex: Açaí, Sorvete, Creme de Ninho">
@@ -1321,32 +1322,63 @@
         lista.map(e => `<option value="${e.id}">${e.nome} (${e.quantidade.toFixed(2)} ${e.unidade})</option>`).join("");
     }
 
-    // Abre o modal de criação de novo estoque-base
-    function abrirModalNovoEstoqueBase() {
+    // Abre o modal de criação/edição de estoque-base.
+    // Sem argumento = modo criação. Com um id = modo edição (pré-preenche os campos).
+    function abrirModalNovoEstoqueBase(idParaEditar) {
+      const titulo  = document.getElementById("modal-eb-titulo");
+      const idInput = document.getElementById("eb-id");
+      if (idParaEditar) {
+        const lista = STATE.get("estoquesBases") || [];
+        const eb = lista.find(e => e.id === idParaEditar);
+        if (!eb) return;
+        titulo.textContent = "✏️ Editar Estoque-Base";
+        idInput.value = eb.id;
+        document.getElementById("eb-nome").value = eb.nome || "";
+        document.getElementById("eb-unidade").value = eb.unidade || "kg";
+        document.getElementById("eb-quantidade").value = eb.quantidade ?? "";
+      } else {
+        titulo.textContent = "⚖️ Novo Estoque-Base";
+        idInput.value = "";
+        document.getElementById("eb-nome").value = "";
+        document.getElementById("eb-unidade").value = "kg";
+        document.getElementById("eb-quantidade").value = "";
+      }
       document.getElementById("modal-novo-estoque-base").style.display = "flex";
     }
     window.abrirModalNovoEstoqueBase = abrirModalNovoEstoqueBase;
 
-    // Salva novo estoque-base via API
+    // Salva o estoque-base via API — cria um novo ou atualiza um existente (modo edição)
     async function salvarNovoEstoqueBase() {
-      const nome      = document.getElementById("eb-nome").value.trim();
-      const unidade   = document.getElementById("eb-unidade").value;
-      const quantidade = parseFloat(document.getElementById("eb-quantidade").value) || 0;
+      const idEditando = document.getElementById("eb-id").value.trim();
+      const nome        = document.getElementById("eb-nome").value.trim();
+      const unidade     = document.getElementById("eb-unidade").value;
+      const quantidade  = parseFloat(document.getElementById("eb-quantidade").value) || 0;
 
       if (!nome) { alert("Informe o nome do estoque-base."); return; }
 
       try {
-        const novo = await API_ESTOQUE_BASE.criar({ nome, unidade, quantidade });
-        // Atualiza estado local
-        const lista = STATE.get("estoquesBases") || [];
-        STATE.set("estoquesBases", [...lista, novo]);
-        // Fecha modal e atualiza select
-        document.getElementById("modal-novo-estoque-base").style.display = "none";
-        _carregarSelectEstoqueBase();
-        document.getElementById("prod-estoque-base-id").value = novo.id;
-        MODAL.toast(`Estoque-Base "${nome}" criado! ✅`);
+        if (idEditando) {
+          // Modo edição — atualiza o item existente
+          const atualizado = await API_ESTOQUE_BASE.editar(idEditando, { nome, unidade, quantidade });
+          const lista = STATE.get("estoquesBases") || [];
+          STATE.set("estoquesBases", lista.map(e => e.id === idEditando ? atualizado : e));
+          document.getElementById("modal-novo-estoque-base").style.display = "none";
+          _carregarSelectEstoqueBase();
+          if (typeof renderizarEstoqueBase === "function") renderizarEstoqueBase();
+          MODAL.toast(`Estoque-Base "${nome}" atualizado! ✅`);
+        } else {
+          // Modo criação
+          const novo = await API_ESTOQUE_BASE.criar({ nome, unidade, quantidade });
+          const lista = STATE.get("estoquesBases") || [];
+          STATE.set("estoquesBases", [...lista, novo]);
+          document.getElementById("modal-novo-estoque-base").style.display = "none";
+          _carregarSelectEstoqueBase();
+          document.getElementById("prod-estoque-base-id").value = novo.id;
+          if (typeof renderizarEstoqueBase === "function") renderizarEstoqueBase();
+          MODAL.toast(`Estoque-Base "${nome}" criado! ✅`);
+        }
       } catch(e) {
-        alert("Erro ao criar estoque-base: " + e.message);
+        alert("Erro ao salvar estoque-base: " + e.message);
       }
     }
     window.salvarNovoEstoqueBase = salvarNovoEstoqueBase;
@@ -1383,15 +1415,19 @@
                     <div class="adm-item-info">
                       <strong>${eb.nome} ${alerta}</strong>
                       <small>
-                        Disponível: <strong>${eb.quantidade.toFixed(3)} ${eb.unidade}</strong>
                         | Vinculados: ${totalVinculados}
                         ${totalVinculados ? `(${nomesVinculados.join(", ")})` : ""}
                       </small>
+                      <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+                        <label style="font-size:12px;color:var(--text-muted);">Disponível:</label>
+                        <input type="number" min="0" step="0.001" id="qtd-eb-${eb.id}" value="${Number(eb.quantidade.toFixed(3))}"
+                          style="width:110px;text-align:center;">
+                        <span style="font-size:12px;color:var(--text-muted);">${eb.unidade}</span>
+                        <button class="btn btn-primary btn-sm" onclick="salvarQuantidadeEstoqueBase('${eb.id}')">💾 Salvar</button>
+                      </div>
                     </div>
                     <div class="adm-item-acoes" style="gap:8px;flex-wrap:wrap;">
-                      <button class="btn btn-outline btn-sm" onclick="movimentarEstoqueBase('${eb.id}','entrada')">➕ Entrada</button>
-                      <button class="btn btn-outline btn-sm" onclick="movimentarEstoqueBase('${eb.id}','saida')">➖ Saída</button>
-                      <button class="btn btn-outline btn-sm" onclick="verHistoricoEstoqueBase('${eb.id}')">📋 Histórico</button>
+                      <button class="btn btn-outline btn-sm" onclick="abrirModalNovoEstoqueBase('${eb.id}')">✏️ Editar</button>
                       <button class="btn btn-outline btn-sm" style="color:#e55;" onclick="excluirEstoqueBase('${eb.id}')">🗑️</button>
                     </div>
                   </div>`;
@@ -1401,23 +1437,30 @@
     }
     window.renderizarEstoqueBase = renderizarEstoqueBase;
 
-    // Abre prompt para movimentar estoque-base
-    async function movimentarEstoqueBase(id, tipo) {
-      const qtd  = parseFloat(prompt(`Quantidade a ${tipo === "entrada" ? "adicionar" : "remover"} (em kg/L):`));
-      if (isNaN(qtd) || qtd <= 0) return;
-      const desc = prompt("Descrição (opcional):") || "";
+    // Salva a quantidade digitada manualmente no input — pede senha master antes de aplicar.
+    // Usa o tipo "ajuste" (já suportado pelo backend), que define o valor absoluto do estoque,
+    // preservando toda a integração existente (histórico interno, descontos automáticos em vendas, etc.)
+    async function salvarQuantidadeEstoqueBase(id) {
+      const input = document.getElementById(`qtd-eb-${id}`);
+      if (!input) return;
+      const novaQtd = parseFloat(input.value);
+      if (isNaN(novaQtd) || novaQtd < 0) { alert("Informe uma quantidade válida."); return; }
+
       // Protege qualquer alteração manual de estoque com a senha master (empresaConfig.js)
-      MODAL.pedirSenha(tipo === "entrada" ? "Adicionar Estoque" : "Remover Estoque", async () => {
+      MODAL.pedirSenha("Ajustar Estoque-Base", async () => {
         try {
-          const eb   = await API_ESTOQUE_BASE.movimentar(id, tipo, qtd, desc);
+          const eb = await API_ESTOQUE_BASE.movimentar(id, "ajuste", novaQtd, "Ajuste manual de estoque");
           const lista = STATE.get("estoquesBases") || [];
           STATE.set("estoquesBases", lista.map(e => e.id === id ? eb : e));
           renderizarEstoqueBase();
           MODAL.toast("Estoque atualizado! ✅");
         } catch(e) { alert("Erro: " + e.message); }
+      }, () => {
+        // Cancelado ou senha incorreta: reverte o valor exibido no input
+        renderizarEstoqueBase();
       });
     }
-    window.movimentarEstoqueBase = movimentarEstoqueBase;
+    window.salvarQuantidadeEstoqueBase = salvarQuantidadeEstoqueBase;
 
     // Exibe histórico de movimentações do estoque-base
     function verHistoricoEstoqueBase(id) {

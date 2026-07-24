@@ -135,6 +135,24 @@ window.PEDIDOS_NAO_VISTOS = new Set();
 let _somLoopInterval = null;
 
 let _audioCtx = null;
+
+// Os navegadores bloqueiam áudio automático até o usuário interagir com a
+// página (clicar, tocar na tela, etc). Como o som de notificação toca
+// sozinho quando chega um pedido novo (sem nenhum clique do admin), ele
+// pode ficar mudo. Para evitar isso, "destravamos" o áudio assim que o
+// admin clicar em qualquer lugar da página pela primeira vez — depois
+// disso o som toca normalmente, mesmo sem novo clique.
+function _destravarAudioNotificacao() {
+  try {
+    if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_audioCtx.state === "suspended") _audioCtx.resume();
+  } catch (e) { /* navegador sem suporte a Web Audio — ignora */ }
+  document.removeEventListener("click", _destravarAudioNotificacao);
+  document.removeEventListener("touchstart", _destravarAudioNotificacao);
+}
+document.addEventListener("click", _destravarAudioNotificacao);
+document.addEventListener("touchstart", _destravarAudioNotificacao);
+
 function _tocarSomNotificacaoPedido() {
   try {
     if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -528,6 +546,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       STATE.set("categorias",   loja.categorias   || []);
       STATE.set("complementos", loja.complementos || []);
       STATE.set("pedidos",      []);
+      STATE.set("lojaCarregada", true);
       _aplicarConfig(loja.config);
       // Reaplica o footer/banner com os dados reais da empresa (nome, endereço, etc.)
       // agora que a config terminou de carregar — corrige o footer mostrando
@@ -546,6 +565,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (!CONFIG.delivery.retiradaAtiva && opcRetirada) opcRetirada.style.display = "none";
     } catch(e) {
       console.error("Erro ao carregar loja:", e.message);
+      // Mesmo em erro, marca como "carregado" pra não deixar o spinner girando
+      // pra sempre — mostra a mensagem padrão de "loja vazia" em vez disso.
+      STATE.set("lojaCarregada", true);
+      if (typeof renderizarProdutos === "function") renderizarProdutos();
     }
   }
 });

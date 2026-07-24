@@ -78,6 +78,7 @@ const ENUMS = {
     CAMPO_OBRIGATORIO: "Preencha todos os campos obrigatórios.",
     CONFIRMAR_EXCLUSAO: "Tem certeza que deseja excluir?",
     SEM_PRODUTOS: "Nenhum produto encontrado.",
+    CARREGANDO_LOJA: "Aguarde, carregando a loja...",
     PEDIDO_EXCLUIDO: "Pedido excluído e estoque revertido!",
   },
   FRASES_CATEGORIAS: {
@@ -109,6 +110,11 @@ const STATE = {
     adminLogado: false,
     categoriaFiltro: "todos",
     buscaTermo: "",
+    // Só vira true depois que os dados da loja (produtos/categorias) chegam
+    // do servidor pela primeira vez — evita mostrar "Nenhum produto
+    // encontrado" enquanto a página ainda está buscando os dados reais
+    // (ex: primeiro acesso após o servidor "acordar" no Render).
+    lojaCarregada: false,
   },
   _listeners: {},
 
@@ -1205,7 +1211,10 @@ function renderizarProdutos() {
     : CATEGORIAS.ativas().filter(c => c.id === STATE.get("categoriaFiltro"));
 
   if (lista.length === 0) {
-    container.innerHTML = `<div class="sem-produtos"><span>🔍</span><p>${ENUMS.MSGS.SEM_PRODUTOS}</p></div>`;
+    const aindaCarregando = !STATE.get("lojaCarregada");
+    container.innerHTML = aindaCarregando
+      ? `<div class="sem-produtos"><span class="spinner-carregando" style="display:inline-block;width:34px;height:34px;border:3px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:girar 0.8s linear infinite;"></span><p>${ENUMS.MSGS.CARREGANDO_LOJA}</p></div>`
+      : `<div class="sem-produtos"><span>🔍</span><p>${ENUMS.MSGS.SEM_PRODUTOS}</p></div>`;
     return;
   }
 
@@ -1727,7 +1736,7 @@ function _formatarDataComprovante(d) {
 
 function _gerarComprovanteHTML(p) {
   const nomeLoja   = UTIL.sanitize(CONFIG.loja.nome || "Loja");
-  const codigo     = (p.id || "").slice(-5).toUpperCase();
+  const codigo     = p.numeroPedido != null ? String(p.numeroPedido).padStart(3, "0") : (p.id || "").slice(-5).toUpperCase();
   const clienteNome= UTIL.sanitize(p.cliente?.nome || "Cliente");
   const dataTexto  = _formatarDataComprovante(p.data);
   const tipoTexto  = p.tipoEntrega === "entrega" ? "🚚 Entrega" : "📦 Retirada";

@@ -457,6 +457,10 @@ h1, h2, h3, h4 { font-family: var(--font-display); }
 }
 .sem-produtos span { font-size: 48px; display: block; margin-bottom: 12px; }
 
+/* Spinner de "Aguarde, carregando a loja..." — exibido enquanto os dados
+   ainda não chegaram do servidor (ex: primeiro acesso após o Render acordar) */
+@keyframes girar { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
 /* MODAL PRODUTO */
 .produto-modal {
   background: var(--surface);
