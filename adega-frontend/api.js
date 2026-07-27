@@ -153,33 +153,53 @@ function _destravarAudioNotificacao() {
 document.addEventListener("click", _destravarAudioNotificacao);
 document.addEventListener("touchstart", _destravarAudioNotificacao);
 
-function _tocarSomNotificacaoPedido() {
+async function _tocarSomNotificacaoPedido() {
   try {
     if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (_audioCtx.state === "suspended") _audioCtx.resume();
+    if (_audioCtx.state === "suspended") await _audioCtx.resume();
 
     const now = _audioCtx.currentTime;
-    // Duas notas curtas, estilo "campainha" (dim-dom)
-    [880, 660].forEach((freq, i) => {
+    // Campainha "tindon": duas notas (aguda → grave), cada uma com um
+    // harmônico por cima pra dar aquele timbre de sino, não de bip abafado.
+    const notas = [
+      { freq: 1046, inicio: 0.00 }, // "tin"
+      { freq: 784,  inicio: 0.16 }, // "don"
+    ];
+    notas.forEach(nota => {
+      const inicio = now + nota.inicio;
+      const fimNota = inicio + 0.32;
+
+      // Nota fundamental
       const osc  = _audioCtx.createOscillator();
       const gain = _audioCtx.createGain();
-      osc.type = "sine";
-      osc.frequency.value = freq;
-      const inicio = now + i * 0.18;
+      osc.type = "triangle";
+      osc.frequency.value = nota.freq;
       gain.gain.setValueAtTime(0.0001, inicio);
-      gain.gain.exponentialRampToValueAtTime(0.35, inicio + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, inicio + 0.16);
+      gain.gain.exponentialRampToValueAtTime(0.7, inicio + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, fimNota);
       osc.connect(gain).connect(_audioCtx.destination);
       osc.start(inicio);
-      osc.stop(inicio + 0.2);
+      osc.stop(fimNota);
+
+      // Harmônico (oitava acima, mais fraco) — dá o "brilho" de sino
+      const osc2  = _audioCtx.createOscillator();
+      const gain2 = _audioCtx.createGain();
+      osc2.type = "triangle";
+      osc2.frequency.value = nota.freq * 2;
+      gain2.gain.setValueAtTime(0.0001, inicio);
+      gain2.gain.exponentialRampToValueAtTime(0.22, inicio + 0.015);
+      gain2.gain.exponentialRampToValueAtTime(0.0001, fimNota);
+      osc2.connect(gain2).connect(_audioCtx.destination);
+      osc2.start(inicio);
+      osc2.stop(fimNota);
     });
   } catch (e) {
     console.warn("Não foi possível tocar o som de notificação:", e);
   }
 }
 
-// Liga o loop do som (se ainda não estiver ligado) — repete a cada 4s
-// enquanto houver pedido(s) não visto(s).
+// Liga o loop do som (se ainda não estiver ligado) — repete a cada 3s
+// enquanto houver pedido(s) não visto(s), de forma contínua e no mesmo volume.
 function _iniciarLoopSomNotificacao() {
   if (_somLoopInterval) return; // já está rodando
   _tocarSomNotificacaoPedido(); // toca imediatamente a primeira vez
@@ -190,7 +210,7 @@ function _iniciarLoopSomNotificacao() {
       return;
     }
     _tocarSomNotificacaoPedido();
-  }, 4000);
+  }, 3000);
 }
 
 // Chamada quando o admin clica no sino 🔔 ou no card do pedido.
@@ -547,6 +567,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       STATE.set("complementos", loja.complementos || []);
       STATE.set("pedidos",      []);
       STATE.set("lojaCarregada", true);
+      document.getElementById("loja-loading-overlay")?.remove();
+      document.body.classList.remove("loja-carregando");
       _aplicarConfig(loja.config);
       // Reaplica o footer/banner com os dados reais da empresa (nome, endereço, etc.)
       // agora que a config terminou de carregar — corrige o footer mostrando
@@ -568,7 +590,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       // Mesmo em erro, marca como "carregado" pra não deixar o spinner girando
       // pra sempre — mostra a mensagem padrão de "loja vazia" em vez disso.
       STATE.set("lojaCarregada", true);
+      document.getElementById("loja-loading-overlay")?.remove();
+      document.body.classList.remove("loja-carregando");
       if (typeof renderizarProdutos === "function") renderizarProdutos();
     }
+  } else {
+    // Sem slug identificado — não há como buscar a loja. Remove a tela de
+    // carregamento para não deixar a página travada em branco.
+    document.getElementById("loja-loading-overlay")?.remove();
+    document.body.classList.remove("loja-carregando");
   }
 });

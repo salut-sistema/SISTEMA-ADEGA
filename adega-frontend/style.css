@@ -461,6 +461,13 @@ h1, h2, h3, h4 { font-family: var(--font-display); }
    ainda não chegaram do servidor (ex: primeiro acesso após o Render acordar) */
 @keyframes girar { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
+/* Enquanto a loja está carregando, esconde TODO o resto da página (cabeçalho,
+   categorias, grid de produtos, carrinho, footer, botão do WhatsApp etc.) —
+   deixa visível somente a tela de carregamento (#loja-loading-overlay). */
+body.loja-carregando > *:not(#loja-loading-overlay) {
+  display: none !important;
+}
+
 /* MODAL PRODUTO */
 .produto-modal {
   background: var(--surface);

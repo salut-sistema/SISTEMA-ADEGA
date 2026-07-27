@@ -7,7 +7,17 @@
   <link rel="stylesheet" href="style.css">
   <!-- <link rel="stylesheet" href="style_additions.css"> -->
 <link rel="icon" type="image/png" sizes="32x32" href="./assets/logotipo-transparente.png"></head>
-<body>
+<body class="loja-carregando">
+
+  <!-- OVERLAY DE CARREGAMENTO — cobre a página inteira até os dados da loja
+       chegarem do servidor (evita mostrar cabeçalho/categorias/"vazio" antes
+       da hora, ex: enquanto o servidor "acorda" no Render). Removido
+       automaticamente pelo api.js assim que os dados chegam (ou dá erro). -->
+  <div id="loja-loading-overlay" style="position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--background,#0D0820);gap:18px;">
+    <img src="assets/logo-sistema.png" alt="SALUT" style="width:110px;max-width:55vw;">
+    <span style="width:34px;height:34px;border:3px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:girar 0.8s linear infinite;"></span>
+    <p style="color:#fff;font-family:inherit;font-size:14px;margin:0;">Aguarde, carregando a loja...</p>
+  </div>
 
 
   <!-- HEADER -->
