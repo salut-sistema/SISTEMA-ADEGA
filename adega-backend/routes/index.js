@@ -6,7 +6,7 @@ const express     = require("express");
 const router      = express.Router();
 const { Produto, EstoqueBase, Categoria, Complemento, Pedido, Config, Contador } = require("../models");
 const { authMiddleware, EMPRESAS, empresaValida } = require("../middleware/auth");
-const { SENHA_MASTER } = require("../empresasConfig");
+const { SENHA_MASTER, SOM_NOTIFICACAO_PEDIDO } = require("../empresasConfig");
 
 // Helpers de resposta padronizada
 const ok  = (res, data)         => res.json({ sucesso: true, data });
@@ -30,6 +30,13 @@ async function proximoNumeroPedido(empresaId) {
 // ============================================================
 // ROTAS PÚBLICAS (sem autenticação)
 // ============================================================
+
+// GET /api/som-config — retorna o nome do som de notificação configurado
+// em empresasConfig.js (ver SOM_NOTIFICACAO_PEDIDO). Rota pública e livre
+// de autenticação, pra facilitar a troca sem precisar reimplantar o backend.
+router.get("/som-config", (req, res) => {
+  ok(res, { som: SOM_NOTIFICACAO_PEDIDO || "classico" });
+});
 
 // POST /api/login — autentica a empresa e retorna o token
 router.post("/login", (req, res) => {

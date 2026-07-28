@@ -1345,7 +1345,7 @@ function renderizarAdmProdutos() {
               ${p.imagem
                 ? `<img src="${UTIL.sanitize(p.imagem)}" alt="">`
                 : `<span>${p.emoji || "🛍️"}</span>`}
-              <span style="position:absolute;top:-6px;left:-6px;background:var(--primary,#5B2D8E);color:#fff;border-radius:50%;width:22px;height:22px;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;">${rankMap.get(p.id)}°</span>
+              <span style="position:absolute;top:-6px;left:-6px;background:var(--primary,#5B2D8E);color:#fff;border-radius:50%;width:32px;height:27px;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;">${rankMap.get(p.id)}°</span>
             </div>
             <div class="adm-item-info">
               <strong>${UTIL.sanitize(p.nome)}</strong>

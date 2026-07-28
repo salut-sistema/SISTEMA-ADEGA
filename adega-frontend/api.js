@@ -58,6 +58,7 @@ async function apiFetch(method, endpoint, body = null, publico = false) {
 // ── APIs disponíveis ─────────────────────────────────────────
 const API_AUTH   = { async login(l,s) { return apiFetch("POST","/login",{login:l,senha:s},true); } };
 const API_LOJA   = { async carregar(slug) { return apiFetch("GET",`/loja/${slug}`,null,true); } };
+const API_SISTEMA = { async somConfig() { return apiFetch("GET","/som-config",null,true); } };
 
 const API_PRODUTOS = {
   async listar()      { return apiFetch("GET",   "/produtos"); },
@@ -153,46 +154,65 @@ function _destravarAudioNotificacao() {
 document.addEventListener("click", _destravarAudioNotificacao);
 document.addEventListener("touchstart", _destravarAudioNotificacao);
 
+// Toca uma nota simples (usada pelos presets "classico" e "alerta")
+function _tocarNotaSimples(tipoOnda, freq, inicio, duracao, volumePico) {
+  const osc  = _audioCtx.createOscillator();
+  const gain = _audioCtx.createGain();
+  osc.type = tipoOnda;
+  osc.frequency.value = freq;
+  const fim = inicio + duracao;
+  gain.gain.setValueAtTime(0.0001, inicio);
+  gain.gain.exponentialRampToValueAtTime(volumePico, inicio + 0.015);
+  gain.gain.exponentialRampToValueAtTime(0.0001, fim);
+  osc.connect(gain).connect(_audioCtx.destination);
+  osc.start(inicio);
+  osc.stop(fim);
+}
+
+// ── PRESETS DE SOM ──────────────────────────────────────────
+// Cada preset é uma função que agenda as notas a partir de "now".
+// A opção ativa é escolhida pelo backend, em empresasConfig.js
+// (SOM_NOTIFICACAO_PEDIDO) — não precisa mexer em nada aqui.
+const _SONS_NOTIFICACAO = {
+  // "classico" — som original do sistema: duas notas curtas em onda
+  // senoidal (mais suave/discreto), estilo "dim-dom".
+  classico(now) {
+    [880, 660].forEach((freq, i) => {
+      const inicio = now + i * 0.18;
+      _tocarNotaSimples("sine", freq, inicio, 0.16, 0.35);
+    });
+  },
+
+  // "campainha" — campainha mais brilhante/alta, com harmônico extra
+  // (onda triangular), estilo "tin-don".
+  campainha(now) {
+    const notas = [{ freq: 1046, inicio: 0.00 }, { freq: 784, inicio: 0.16 }];
+    notas.forEach(nota => {
+      const inicio = now + nota.inicio;
+      _tocarNotaSimples("triangle", nota.freq,     inicio, 0.32, 0.7);
+      _tocarNotaSimples("triangle", nota.freq * 2, inicio, 0.32, 0.22); // harmônico
+    });
+  },
+
+  // "alerta" — três bipes curtos e retos (onda quadrada), mais chamativo.
+  alerta(now) {
+    [0, 0.14, 0.28].forEach(t => {
+      _tocarNotaSimples("square", 740, now + t, 0.09, 0.25);
+    });
+  },
+};
+
+// Nome do preset ativo — vem do backend (empresasConfig.js). "classico"
+// é o padrão até a configuração real chegar do servidor.
+let _somAtivoPreset = "classico";
+
 async function _tocarSomNotificacaoPedido() {
   try {
     if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     if (_audioCtx.state === "suspended") await _audioCtx.resume();
 
-    const now = _audioCtx.currentTime;
-    // Campainha "tindon": duas notas (aguda → grave), cada uma com um
-    // harmônico por cima pra dar aquele timbre de sino, não de bip abafado.
-    const notas = [
-      { freq: 1046, inicio: 0.00 }, // "tin"
-      { freq: 784,  inicio: 0.16 }, // "don"
-    ];
-    notas.forEach(nota => {
-      const inicio = now + nota.inicio;
-      const fimNota = inicio + 0.32;
-
-      // Nota fundamental
-      const osc  = _audioCtx.createOscillator();
-      const gain = _audioCtx.createGain();
-      osc.type = "triangle";
-      osc.frequency.value = nota.freq;
-      gain.gain.setValueAtTime(0.0001, inicio);
-      gain.gain.exponentialRampToValueAtTime(0.7, inicio + 0.015);
-      gain.gain.exponentialRampToValueAtTime(0.0001, fimNota);
-      osc.connect(gain).connect(_audioCtx.destination);
-      osc.start(inicio);
-      osc.stop(fimNota);
-
-      // Harmônico (oitava acima, mais fraco) — dá o "brilho" de sino
-      const osc2  = _audioCtx.createOscillator();
-      const gain2 = _audioCtx.createGain();
-      osc2.type = "triangle";
-      osc2.frequency.value = nota.freq * 2;
-      gain2.gain.setValueAtTime(0.0001, inicio);
-      gain2.gain.exponentialRampToValueAtTime(0.22, inicio + 0.015);
-      gain2.gain.exponentialRampToValueAtTime(0.0001, fimNota);
-      osc2.connect(gain2).connect(_audioCtx.destination);
-      osc2.start(inicio);
-      osc2.stop(fimNota);
-    });
+    const tocar = _SONS_NOTIFICACAO[_somAtivoPreset] || _SONS_NOTIFICACAO.classico;
+    tocar(_audioCtx.currentTime);
   } catch (e) {
     console.warn("Não foi possível tocar o som de notificação:", e);
   }
@@ -467,6 +487,7 @@ async function fazerLogin() {
   const senhaInput = document.getElementById("login-senha");
   const erroEl     = document.getElementById("login-erro");
   const box        = document.querySelector(".login-box");
+  const btn        = document.getElementById("btn-login-entrar");
 
   const loginVal = loginInput?.value?.trim();
   const senhaVal = senhaInput?.value;
@@ -476,17 +497,29 @@ async function fazerLogin() {
     return;
   }
 
+  // Trava o botão e mostra "Conectando..." — evita o admin ficar clicando
+  // várias vezes achando que travou (comum durante o "acordar" do servidor).
+  if (btn && !btn.disabled) {
+    btn.disabled = true;
+    btn.dataset.textoOriginal = btn.innerHTML;
+    btn.innerHTML = `<span style="display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:girar 0.7s linear infinite;vertical-align:-2px;margin-right:8px;"></span>Conectando...`;
+  }
+  if (erroEl) erroEl.style.display = "none";
+
   try {
     const dados = await API_AUTH.login(loginVal, senhaVal);
     AUTH.salvar(dados.token, dados.empresaId, dados.nome, dados.slug, dados.vencimento);
     STATE.set("adminLogado", true);
-    document.getElementById("login-overlay")?.classList.remove("active");
-    if (erroEl) erroEl.style.display = "none";
+    if (btn) btn.innerHTML = `<span style="display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:girar 0.7s linear infinite;vertical-align:-2px;margin-right:8px;"></span>Carregando painel...`;
     const nomeEl = document.getElementById("adm-loja-nome");
     if (nomeEl) nomeEl.textContent = dados.nome;
     // Atualiza o card "Aviso de Assinatura" do menu lateral (ver assinatura.js)
     window.AVISO_ASSINATURA?.atualizar();
+    // Só esconde a tela de login/carregamento DEPOIS que os dados do painel
+    // (produtos, pedidos, etc.) realmente chegarem — assim o admin nunca vê
+    // o painel "vazio" por alguns segundos enquanto ainda está buscando tudo.
     await _carregarDadosAdmin();
+    document.getElementById("login-overlay")?.classList.remove("active");
   } catch(e) {
     if (erroEl) {
       erroEl.textContent = e.message.includes("bloqueada") || e.message.includes("expirado")
@@ -497,6 +530,13 @@ async function fazerLogin() {
     senhaInput?.classList.add("input-erro");
     box?.classList.add("shake");
     setTimeout(() => box?.classList.remove("shake"), 400);
+  } finally {
+    // Restaura o botão (só faz sentido se o login falhou — em caso de
+    // sucesso o overlay já foi escondido e o painel está carregado)
+    if (btn && btn.disabled) {
+      btn.disabled = false;
+      btn.innerHTML = btn.dataset.textoOriginal || "🔓 Entrar";
+    }
   }
 }
 window.fazerLogin = fazerLogin;
@@ -532,15 +572,34 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (isAdmin) {
     _patchStorage(); // intercepta salvamentos para o MongoDB
 
+    // Busca qual som de notificação está configurado em empresasConfig.js
+    // (SOM_NOTIFICACAO_PEDIDO) — não bloqueia o resto do carregamento.
+    API_SISTEMA.somConfig()
+      .then(cfg => { if (cfg?.som) _somAtivoPreset = cfg.som; })
+      .catch(() => { /* mantém "classico" como padrão em caso de erro */ });
+
     // Se já possui sessão ativa, carrega o painel direto
     if (AUTH.logado()) {
       STATE.set("adminLogado", true);
-      document.getElementById("login-overlay")?.classList.remove("active");
+      // Troca o conteúdo do overlay pra um estado de carregamento (sem
+      // formulário de login, já que a sessão é válida) e só esconde depois
+      // que os dados do painel realmente chegarem — evita mostrar o admin
+      // vazio por alguns segundos (ex: servidor "acordando" no Render).
+      const loginBox = document.querySelector(".login-box");
+      if (loginBox) {
+        loginBox.dataset.htmlOriginal = loginBox.innerHTML;
+        loginBox.innerHTML = `
+          <img src="assets/logo-sistema.png" alt="SALUT" class="login-logo-img">
+          <span style="display:inline-block;width:34px;height:34px;border:3px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:girar 0.8s linear infinite;margin:14px 0;"></span>
+          <p style="color:#fff;font-size:14px;margin:0;">Aguarde, carregando o painel...</p>`;
+      }
       const nomeEl = document.getElementById("adm-loja-nome");
       if (nomeEl) nomeEl.textContent = AUTH.nome() || "Painel Admin";
       // Atualiza o card "Aviso de Assinatura" do menu lateral (ver assinatura.js)
       window.AVISO_ASSINATURA?.atualizar();
       await _carregarDadosAdmin();
+      document.getElementById("login-overlay")?.classList.remove("active");
+      if (loginBox && loginBox.dataset.htmlOriginal) loginBox.innerHTML = loginBox.dataset.htmlOriginal;
     }
     return;
   }

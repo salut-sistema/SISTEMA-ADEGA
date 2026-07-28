@@ -108,4 +108,27 @@ const EMPRESAS = [
 // ============================================================
 const SENHA_MASTER = "1234";
 
-module.exports = { EMPRESAS, SENHA_MASTER };
+// ============================================================
+// SOM_NOTIFICACAO_PEDIDO — Som que toca no painel admin quando
+// chega um pedido novo (repete a cada 3s até o admin visualizar).
+// Para trocar o som, troque APENAS o valor abaixo por um dos
+// nomes de opção listados nos comentários. Nenhum outro arquivo
+// precisa ser modificado.
+//
+// Opções disponíveis:
+//
+//   "classico"   → Som original do sistema. Duas notas curtas em
+//                  onda senoidal (mais suave/discreto), estilo
+//                  "dim-dom".
+//
+//   "campainha"  → Som de campainha mais brilhante/alto, com
+//                  harmônico extra (onda triangular), estilo
+//                  "tin-don".
+//
+//   "alerta"     → Três bipes curtos e retos (onda quadrada),
+//                  mais chamativo, estilo "bip-bip-bip".
+//
+// ============================================================
+const SOM_NOTIFICACAO_PEDIDO = "classico";
+
+module.exports = { EMPRESAS, SENHA_MASTER, SOM_NOTIFICACAO_PEDIDO };
