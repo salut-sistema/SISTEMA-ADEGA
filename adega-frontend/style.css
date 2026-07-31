@@ -933,6 +933,40 @@ body.loja-carregando > *:not(#loja-loading-overlay) {
 
 .form-acoes { display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px; flex-wrap: wrap; }
 
+/* ============================================================
+   TAMANHOS DO PRODUTO — colunas "Por Volume" e "Por Unidade"
+   ============================================================ */
+.tamanhos-colunas { display: grid; grid-template-columns: 1fr; gap: 16px; }
+@media (min-width: 640px) { .tamanhos-colunas { grid-template-columns: 1fr 1fr; } }
+
+.tamanhos-coluna { display: flex; flex-direction: column; }
+.tamanhos-coluna-titulo {
+  font-size: 12px; font-weight: 700; color: var(--text-muted);
+  margin-bottom: 6px; text-transform: uppercase; letter-spacing: .03em;
+}
+.tamanhos-caixa {
+  display: flex; flex-direction: column; gap: 8px; flex: 1;
+  background: rgba(91,45,142,.06); border-radius: 10px;
+  padding: 12px; border: 1px solid var(--border);
+}
+.tamanho-todos-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.tamanho-todos-row input[type="checkbox"] { width: auto; }
+.tamanho-todos-row label { margin: 0; font-size: 12px; cursor: pointer; }
+
+.tamanho-lista {
+  border-top: 1px solid var(--border); padding-top: 8px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.tamanho-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.tamanho-row input[type="checkbox"] { width: auto; flex-shrink: 0; }
+.tamanho-row-label { margin: 0; min-width: 44px; font-size: 13px; cursor: pointer; }
+.tamanho-row-rs { font-size: 12px; color: var(--text-muted); flex-shrink: 0; }
+.tamanho-row-preco { width: 90px; padding: 4px 8px; font-size: 13px; }
+
+@media (max-width: 380px) {
+  .tamanho-row-preco { width: 100%; }
+}
+
 /* ADM ITEMS */
 .adm-item {
   display: flex; align-items: center; gap: 12px;
@@ -1300,5 +1334,13 @@ input[type="color"] {
     padding: 8px 12px;
     font-size: 12px;
   }
+}
+
+/* ============================================================
+   ITENS DE LISTA (Controle de Estoque, Produtos, etc.) — mobile
+   ============================================================ */
+@media (max-width: 420px) {
+  .adm-item { flex-wrap: wrap; }
+  .adm-item-acoes { width: 100%; justify-content: flex-end; }
 }
 

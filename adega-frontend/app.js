@@ -95,7 +95,15 @@ const ENUMS = {
     complemento: "✨ Personalize do seu jeito!",
     default: "🌟 Qualidade e sabor em cada detalhe!",
   },
+  // ── TAMANHOS DE PRODUTO ─────────────────────────────────────
+  // Duas modalidades independentes, que alimentam o mesmo campo
+  // `produto.tamanhos` (o backend/loja não diferenciam a origem,
+  // apenas leem o rótulo + preço — por isso basta somar as duas
+  // listas em qualquer lugar que precise "ler todos os tamanhos").
+  TAMANHOS_VOLUME:  ["200ml", "300ml", "400ml", "500ml", "700ml", "1L"],
+  TAMANHOS_UNIDADE: ["P", "M", "G", "GG", "EG", "G1", "G2", "G3"],
 };
+ENUMS.TAMANHOS_TODOS = [...ENUMS.TAMANHOS_VOLUME, ...ENUMS.TAMANHOS_UNIDADE];
 
 // ============================================================
 // ESTADO CENTRALIZADO COM SISTEMA REATIVO
@@ -1438,7 +1446,6 @@ function renderizarControleEstoque() {
                 <div class="adm-item-info">
                   <strong>${UTIL.sanitize(p.nome)}</strong>
                   <small>⚖️ Estoque-Base: <strong>${nomeBase}</strong> — <strong>${qtdBase} ${unBase}</strong> disponível | Vendas: ${p.vendas || 0}</small>
-                  <small style="color:var(--text-muted)">Desconta do Estoque-Base conforme o tamanho selecionado na venda (ex: 400ml, 700ml, 1L)</small>
                   ${alertaBaixo}
                 </div>
                 <div class="adm-item-acoes" style="align-items:center;gap:8px;">
@@ -2201,9 +2208,8 @@ function preencherFormProduto(p) {
   }
   popularSelectCategorias();
   s("prod-categoria", p.categoria);
-  // Preencher tamanhos com preço
-  const VOLS_ED = ["200ml","300ml","400ml","500ml","700ml","1L"];
-  VOLS_ED.forEach(v => {
+  // Preencher tamanhos com preço (por volume + por unidade)
+  ENUMS.TAMANHOS_TODOS.forEach(v => {
     const cb  = document.getElementById("tam-" + v);
     const inp = document.getElementById("tam-preco-" + v);
     if (!cb) return;
@@ -2213,7 +2219,9 @@ function preencherFormProduto(p) {
     if (inp) { inp.disabled = !ativo; inp.value = ativo && typeof tam === "object" ? (tam.preco || "") : ""; }
   });
   const todosEl = document.getElementById("sel-todos-tamanhos");
-  if (todosEl) todosEl.checked = VOLS_ED.every(v => document.getElementById("tam-" + v)?.checked);
+  if (todosEl) todosEl.checked = ENUMS.TAMANHOS_VOLUME.every(v => document.getElementById("tam-" + v)?.checked);
+  const todosUnidadeEl = document.getElementById("sel-todos-tamanhos-unidade");
+  if (todosUnidadeEl) todosUnidadeEl.checked = ENUMS.TAMANHOS_UNIDADE.every(v => document.getElementById("tam-" + v)?.checked);
   popularComplementosProd();
   if (p.complementosVinculados) {
     document.querySelectorAll('input[name="prod-comp"]').forEach(cb => {
@@ -2330,9 +2338,8 @@ function bindFormProduto() {
     e.preventDefault();
     const g = id => document.getElementById(id)?.value?.trim() || "";
     const id = g("form-produto-id");
-    // Ler tamanhos com preço
-    const VOLS_TAMANHOS = ["200ml","300ml","400ml","500ml","700ml","1L"];
-    const tamanhos = VOLS_TAMANHOS
+    // Ler tamanhos com preço (por volume + por unidade)
+    const tamanhos = ENUMS.TAMANHOS_TODOS
       .filter(v => document.getElementById("tam-" + v)?.checked)
       .map(v => ({ volume: v, preco: parseFloat(document.getElementById("tam-preco-" + v)?.value) || 0 }));
     const compsVinculados = [...document.querySelectorAll('input[name="prod-comp"]:checked')].map(el => el.value);
@@ -2360,8 +2367,8 @@ function bindFormProduto() {
       // Limpa campos de estoque-base
       document.getElementById("config-estoque-base").style.display = "none";
       document.getElementById("prod-usa-estoque-base").checked = false;
-      // Limpa tamanhos
-      ["200ml","300ml","400ml","500ml","700ml","1L"].forEach(v => {
+      // Limpa tamanhos (por volume + por unidade)
+      ENUMS.TAMANHOS_TODOS.forEach(v => {
         const cb  = document.getElementById("tam-" + v);
         const inp = document.getElementById("tam-preco-" + v);
         if (cb)  cb.checked = false;
@@ -2369,6 +2376,8 @@ function bindFormProduto() {
       });
       const todosEl = document.getElementById("sel-todos-tamanhos");
       if (todosEl) todosEl.checked = false;
+      const todosUnidadeEl = document.getElementById("sel-todos-tamanhos-unidade");
+      if (todosUnidadeEl) todosUnidadeEl.checked = false;
       // Limpa preview de imagem
       if (typeof _removerImagemProduto === "function") _removerImagemProduto();
       TABS.ir("sec-produtos", "tab-produtos-lista");

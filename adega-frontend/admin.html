@@ -326,50 +326,119 @@
                   <textarea id="prod-descricao" rows="2" placeholder="Descreva o produto..."></textarea>
                 </div>
                 <div class="form-grupo full">
-                  <label>Tamanhos disponíveis (por volume)</label>
-                  <div id="prod-tamanhos-container" style="display:flex;flex-direction:column;gap:8px;background:rgba(91,45,142,.06);border-radius:10px;padding:12px;border:1px solid var(--border);">
-                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-                      <input type="checkbox" id="sel-todos-tamanhos" style="width:auto;" onchange="toggleTodosTamanhos(this.checked)">
-                      <label for="sel-todos-tamanhos" style="margin:0;font-size:12px;cursor:pointer;">Adicionar todos os tamanhos</label>
+                  <label>Tamanhos Disponíveis</label>
+                  <div class="tamanhos-colunas">
+
+                    <!-- ── COLUNA 1: TAMANHOS POR VOLUME (lógica original, inalterada) ── -->
+                    <div class="tamanhos-coluna">
+                      <div class="tamanhos-coluna-titulo">Tamanhos por Volume</div>
+                      <div id="prod-tamanhos-container" class="tamanhos-caixa">
+                        <div class="tamanho-todos-row">
+                          <input type="checkbox" id="sel-todos-tamanhos" onchange="toggleTodosTamanhos(this.checked)">
+                          <label for="sel-todos-tamanhos">Adicionar todos os tamanhos</label>
+                        </div>
+                        <div class="tamanho-lista">
+                          <div class="tamanho-row">
+                            <input type="checkbox" id="tam-200ml" name="prod-tamanho-check" value="200ml" onchange="toggleTamanhoPreco('200ml',this.checked)">
+                            <label for="tam-200ml" class="tamanho-row-label">200 ml</label>
+                            <span class="tamanho-row-rs">R$</span>
+                            <input type="number" id="tam-preco-200ml" step="0.01" min="0" placeholder="0,00" class="tamanho-row-preco" disabled>
+                          </div>
+                          <div class="tamanho-row">
+                            <input type="checkbox" id="tam-300ml" name="prod-tamanho-check" value="300ml" onchange="toggleTamanhoPreco('300ml',this.checked)">
+                            <label for="tam-300ml" class="tamanho-row-label">300 ml</label>
+                            <span class="tamanho-row-rs">R$</span>
+                            <input type="number" id="tam-preco-300ml" step="0.01" min="0" placeholder="0,00" class="tamanho-row-preco" disabled>
+                          </div>
+                          <div class="tamanho-row">
+                            <input type="checkbox" id="tam-400ml" name="prod-tamanho-check" value="400ml" onchange="toggleTamanhoPreco('400ml',this.checked)">
+                            <label for="tam-400ml" class="tamanho-row-label">400 ml</label>
+                            <span class="tamanho-row-rs">R$</span>
+                            <input type="number" id="tam-preco-400ml" step="0.01" min="0" placeholder="0,00" class="tamanho-row-preco" disabled>
+                          </div>
+                          <div class="tamanho-row">
+                            <input type="checkbox" id="tam-500ml" name="prod-tamanho-check" value="500ml" onchange="toggleTamanhoPreco('500ml',this.checked)">
+                            <label for="tam-500ml" class="tamanho-row-label">500 ml</label>
+                            <span class="tamanho-row-rs">R$</span>
+                            <input type="number" id="tam-preco-500ml" step="0.01" min="0" placeholder="0,00" class="tamanho-row-preco" disabled>
+                          </div>
+                          <div class="tamanho-row">
+                            <input type="checkbox" id="tam-700ml" name="prod-tamanho-check" value="700ml" onchange="toggleTamanhoPreco('700ml',this.checked)">
+                            <label for="tam-700ml" class="tamanho-row-label">700 ml</label>
+                            <span class="tamanho-row-rs">R$</span>
+                            <input type="number" id="tam-preco-700ml" step="0.01" min="0" placeholder="0,00" class="tamanho-row-preco" disabled>
+                          </div>
+                          <div class="tamanho-row">
+                            <input type="checkbox" id="tam-1L" name="prod-tamanho-check" value="1L" onchange="toggleTamanhoPreco('1L',this.checked)">
+                            <label for="tam-1L" class="tamanho-row-label">1 L</label>
+                            <span class="tamanho-row-rs">R$</span>
+                            <input type="number" id="tam-preco-1L" step="0.01" min="0" placeholder="0,00" class="tamanho-row-preco" disabled>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <div style="border-top:1px solid var(--border);padding-top:8px;display:flex;flex-direction:column;gap:6px;">
-                      <div class="tamanho-row" style="display:flex;align-items:center;gap:10px;">
-                        <input type="checkbox" id="tam-200ml" name="prod-tamanho-check" value="200ml" style="width:auto;" onchange="toggleTamanhoPreco('200ml',this.checked)">
-                        <label for="tam-200ml" style="margin:0;width:52px;font-size:13px;cursor:pointer;">200 ml</label>
-                        <span style="font-size:12px;color:var(--text-muted);">R$</span>
-                        <input type="number" id="tam-preco-200ml" step="0.01" min="0" placeholder="0,00" style="width:90px;padding:4px 8px;font-size:13px;" disabled>
-                      </div>
-                      <div class="tamanho-row" style="display:flex;align-items:center;gap:10px;">
-                        <input type="checkbox" id="tam-300ml" name="prod-tamanho-check" value="300ml" style="width:auto;" onchange="toggleTamanhoPreco('300ml',this.checked)">
-                        <label for="tam-300ml" style="margin:0;width:52px;font-size:13px;cursor:pointer;">300 ml</label>
-                        <span style="font-size:12px;color:var(--text-muted);">R$</span>
-                        <input type="number" id="tam-preco-300ml" step="0.01" min="0" placeholder="0,00" style="width:90px;padding:4px 8px;font-size:13px;" disabled>
-                      </div>
-                      <div class="tamanho-row" style="display:flex;align-items:center;gap:10px;">
-                        <input type="checkbox" id="tam-400ml" name="prod-tamanho-check" value="400ml" style="width:auto;" onchange="toggleTamanhoPreco('400ml',this.checked)">
-                        <label for="tam-400ml" style="margin:0;width:52px;font-size:13px;cursor:pointer;">400 ml</label>
-                        <span style="font-size:12px;color:var(--text-muted);">R$</span>
-                        <input type="number" id="tam-preco-400ml" step="0.01" min="0" placeholder="0,00" style="width:90px;padding:4px 8px;font-size:13px;" disabled>
-                      </div>
-                      <div class="tamanho-row" style="display:flex;align-items:center;gap:10px;">
-                        <input type="checkbox" id="tam-500ml" name="prod-tamanho-check" value="500ml" style="width:auto;" onchange="toggleTamanhoPreco('500ml',this.checked)">
-                        <label for="tam-500ml" style="margin:0;width:52px;font-size:13px;cursor:pointer;">500 ml</label>
-                        <span style="font-size:12px;color:var(--text-muted);">R$</span>
-                        <input type="number" id="tam-preco-500ml" step="0.01" min="0" placeholder="0,00" style="width:90px;padding:4px 8px;font-size:13px;" disabled>
-                      </div>
-                      <div class="tamanho-row" style="display:flex;align-items:center;gap:10px;">
-                        <input type="checkbox" id="tam-700ml" name="prod-tamanho-check" value="700ml" style="width:auto;" onchange="toggleTamanhoPreco('700ml',this.checked)">
-                        <label for="tam-700ml" style="margin:0;width:52px;font-size:13px;cursor:pointer;">700 ml</label>
-                        <span style="font-size:12px;color:var(--text-muted);">R$</span>
-                        <input type="number" id="tam-preco-700ml" step="0.01" min="0" placeholder="0,00" style="width:90px;padding:4px 8px;font-size:13px;" disabled>
-                      </div>
-                      <div class="tamanho-row" style="display:flex;align-items:center;gap:10px;">
-                        <input type="checkbox" id="tam-1L" name="prod-tamanho-check" value="1L" style="width:auto;" onchange="toggleTamanhoPreco('1L',this.checked)">
-                        <label for="tam-1L" style="margin:0;width:52px;font-size:13px;cursor:pointer;">1 L</label>
-                        <span style="font-size:12px;color:var(--text-muted);">R$</span>
-                        <input type="number" id="tam-preco-1L" step="0.01" min="0" placeholder="0,00" style="width:90px;padding:4px 8px;font-size:13px;" disabled>
+
+                    <!-- ── COLUNA 2: TAMANHOS POR UNIDADE (nova — mesma lógica, tokens diferentes) ── -->
+                    <div class="tamanhos-coluna">
+                      <div class="tamanhos-coluna-titulo">Tamanhos por Unidade</div>
+                      <div id="prod-tamanhos-unidade-container" class="tamanhos-caixa">
+                        <div class="tamanho-todos-row">
+                          <input type="checkbox" id="sel-todos-tamanhos-unidade" onchange="toggleTodosTamanhosUnidade(this.checked)">
+                          <label for="sel-todos-tamanhos-unidade">Adicionar todos os tamanhos</label>
+                        </div>
+                        <div class="tamanho-lista">
+                          <div class="tamanho-row">
+                            <input type="checkbox" id="tam-P" name="prod-tamanho-unidade-check" value="P" onchange="toggleTamanhoPrecoUnidade('P',this.checked)">
+                            <label for="tam-P" class="tamanho-row-label">P</label>
+                            <span class="tamanho-row-rs">R$</span>
+                            <input type="number" id="tam-preco-P" step="0.01" min="0" placeholder="0,00" class="tamanho-row-preco" disabled>
+                          </div>
+                          <div class="tamanho-row">
+                            <input type="checkbox" id="tam-M" name="prod-tamanho-unidade-check" value="M" onchange="toggleTamanhoPrecoUnidade('M',this.checked)">
+                            <label for="tam-M" class="tamanho-row-label">M</label>
+                            <span class="tamanho-row-rs">R$</span>
+                            <input type="number" id="tam-preco-M" step="0.01" min="0" placeholder="0,00" class="tamanho-row-preco" disabled>
+                          </div>
+                          <div class="tamanho-row">
+                            <input type="checkbox" id="tam-G" name="prod-tamanho-unidade-check" value="G" onchange="toggleTamanhoPrecoUnidade('G',this.checked)">
+                            <label for="tam-G" class="tamanho-row-label">G</label>
+                            <span class="tamanho-row-rs">R$</span>
+                            <input type="number" id="tam-preco-G" step="0.01" min="0" placeholder="0,00" class="tamanho-row-preco" disabled>
+                          </div>
+                          <div class="tamanho-row">
+                            <input type="checkbox" id="tam-GG" name="prod-tamanho-unidade-check" value="GG" onchange="toggleTamanhoPrecoUnidade('GG',this.checked)">
+                            <label for="tam-GG" class="tamanho-row-label">GG</label>
+                            <span class="tamanho-row-rs">R$</span>
+                            <input type="number" id="tam-preco-GG" step="0.01" min="0" placeholder="0,00" class="tamanho-row-preco" disabled>
+                          </div>
+                          <div class="tamanho-row">
+                            <input type="checkbox" id="tam-EG" name="prod-tamanho-unidade-check" value="EG" onchange="toggleTamanhoPrecoUnidade('EG',this.checked)">
+                            <label for="tam-EG" class="tamanho-row-label">EG</label>
+                            <span class="tamanho-row-rs">R$</span>
+                            <input type="number" id="tam-preco-EG" step="0.01" min="0" placeholder="0,00" class="tamanho-row-preco" disabled>
+                          </div>
+                          <div class="tamanho-row">
+                            <input type="checkbox" id="tam-G1" name="prod-tamanho-unidade-check" value="G1" onchange="toggleTamanhoPrecoUnidade('G1',this.checked)">
+                            <label for="tam-G1" class="tamanho-row-label">G1</label>
+                            <span class="tamanho-row-rs">R$</span>
+                            <input type="number" id="tam-preco-G1" step="0.01" min="0" placeholder="0,00" class="tamanho-row-preco" disabled>
+                          </div>
+                          <div class="tamanho-row">
+                            <input type="checkbox" id="tam-G2" name="prod-tamanho-unidade-check" value="G2" onchange="toggleTamanhoPrecoUnidade('G2',this.checked)">
+                            <label for="tam-G2" class="tamanho-row-label">G2</label>
+                            <span class="tamanho-row-rs">R$</span>
+                            <input type="number" id="tam-preco-G2" step="0.01" min="0" placeholder="0,00" class="tamanho-row-preco" disabled>
+                          </div>
+                          <div class="tamanho-row">
+                            <input type="checkbox" id="tam-G3" name="prod-tamanho-unidade-check" value="G3" onchange="toggleTamanhoPrecoUnidade('G3',this.checked)">
+                            <label for="tam-G3" class="tamanho-row-label">G3</label>
+                            <span class="tamanho-row-rs">R$</span>
+                            <input type="number" id="tam-preco-G3" step="0.01" min="0" placeholder="0,00" class="tamanho-row-preco" disabled>
+                          </div>
+                        </div>
                       </div>
                     </div>
+
                   </div>
                 </div>
                 <div class="form-grupo full">
@@ -966,8 +1035,8 @@
       document.getElementById("prod-complementos-area").style.display = "none";
       // Limpa preview de imagem
       if (typeof _removerImagemProduto === "function") _removerImagemProduto();
-      // Desabilita e zera todos os campos de preco dos tamanhos
-      ["200ml","300ml","400ml","500ml","700ml","1L"].forEach(function(v) {
+      // Desabilita e zera todos os campos de preco dos tamanhos (volume + unidade)
+      ["200ml","300ml","400ml","500ml","700ml","1L","P","M","G","GG","EG","G1","G2","G3"].forEach(function(v) {
         var inp = document.getElementById("tam-preco-" + v);
         if (inp) { inp.disabled = true; inp.value = ""; }
       });
@@ -1241,7 +1310,7 @@
     window._handleLogoUrlSelect = _handleLogoUrlSelect;
     window._handleLogoUrlDrop = _handleLogoUrlDrop;
 
-    // ── TAMANHOS COM PREÇO ─────────────────────────────────
+    // ── TAMANHOS COM PREÇO — POR VOLUME (lógica original, inalterada) ──────
     window.toggleTamanhoPreco = function(v, ativo) {
       const inp = document.getElementById("tam-preco-" + v);
       if (inp) { inp.disabled = !ativo; if (!ativo) inp.value = ""; }
@@ -1253,6 +1322,27 @@
     window.toggleTodosTamanhos = function(ativo) {
       const VOLS = ["200ml","300ml","400ml","500ml","700ml","1L"];
       VOLS.forEach(v => {
+        const cb  = document.getElementById("tam-" + v);
+        const inp = document.getElementById("tam-preco-" + v);
+        if (cb)  cb.checked  = ativo;
+        if (inp) inp.disabled = !ativo;
+        if (inp && !ativo) inp.value = "";
+      });
+    };
+
+    // ── TAMANHOS COM PREÇO — POR UNIDADE (nova coluna, mesma lógica) ───────
+    // Independente da coluna de volume: cada coluna tem seu próprio
+    // checkbox "selecionar todos" e não interfere na outra.
+    window.toggleTamanhoPrecoUnidade = function(v, ativo) {
+      const inp = document.getElementById("tam-preco-" + v);
+      if (inp) { inp.disabled = !ativo; if (!ativo) inp.value = ""; }
+      const checks = document.querySelectorAll('input[name="prod-tamanho-unidade-check"]');
+      const todos  = document.getElementById("sel-todos-tamanhos-unidade");
+      if (todos) todos.checked = [...checks].every(c => c.checked);
+    };
+    window.toggleTodosTamanhosUnidade = function(ativo) {
+      const UNIDADES = ["P","M","G","GG","EG","G1","G2","G3"];
+      UNIDADES.forEach(v => {
         const cb  = document.getElementById("tam-" + v);
         const inp = document.getElementById("tam-preco-" + v);
         if (cb)  cb.checked  = ativo;
