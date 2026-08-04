@@ -392,48 +392,64 @@
                             <label for="tam-P" class="tamanho-row-label">P</label>
                             <span class="tamanho-row-rs">R$</span>
                             <input type="number" id="tam-preco-P" step="0.01" min="0" placeholder="0,00" class="tamanho-row-preco" disabled>
+                            <span class="tamanho-row-est-label">Estoque</span>
+                            <input type="number" id="tam-estoque-P" min="0" step="1" placeholder="0" class="tamanho-row-estoque" disabled>
                           </div>
                           <div class="tamanho-row">
                             <input type="checkbox" id="tam-M" name="prod-tamanho-unidade-check" value="M" onchange="toggleTamanhoPrecoUnidade('M',this.checked)">
                             <label for="tam-M" class="tamanho-row-label">M</label>
                             <span class="tamanho-row-rs">R$</span>
                             <input type="number" id="tam-preco-M" step="0.01" min="0" placeholder="0,00" class="tamanho-row-preco" disabled>
+                            <span class="tamanho-row-est-label">Estoque</span>
+                            <input type="number" id="tam-estoque-M" min="0" step="1" placeholder="0" class="tamanho-row-estoque" disabled>
                           </div>
                           <div class="tamanho-row">
                             <input type="checkbox" id="tam-G" name="prod-tamanho-unidade-check" value="G" onchange="toggleTamanhoPrecoUnidade('G',this.checked)">
                             <label for="tam-G" class="tamanho-row-label">G</label>
                             <span class="tamanho-row-rs">R$</span>
                             <input type="number" id="tam-preco-G" step="0.01" min="0" placeholder="0,00" class="tamanho-row-preco" disabled>
+                            <span class="tamanho-row-est-label">Estoque</span>
+                            <input type="number" id="tam-estoque-G" min="0" step="1" placeholder="0" class="tamanho-row-estoque" disabled>
                           </div>
                           <div class="tamanho-row">
                             <input type="checkbox" id="tam-GG" name="prod-tamanho-unidade-check" value="GG" onchange="toggleTamanhoPrecoUnidade('GG',this.checked)">
                             <label for="tam-GG" class="tamanho-row-label">GG</label>
                             <span class="tamanho-row-rs">R$</span>
                             <input type="number" id="tam-preco-GG" step="0.01" min="0" placeholder="0,00" class="tamanho-row-preco" disabled>
+                            <span class="tamanho-row-est-label">Estoque</span>
+                            <input type="number" id="tam-estoque-GG" min="0" step="1" placeholder="0" class="tamanho-row-estoque" disabled>
                           </div>
                           <div class="tamanho-row">
                             <input type="checkbox" id="tam-EG" name="prod-tamanho-unidade-check" value="EG" onchange="toggleTamanhoPrecoUnidade('EG',this.checked)">
                             <label for="tam-EG" class="tamanho-row-label">EG</label>
                             <span class="tamanho-row-rs">R$</span>
                             <input type="number" id="tam-preco-EG" step="0.01" min="0" placeholder="0,00" class="tamanho-row-preco" disabled>
+                            <span class="tamanho-row-est-label">Estoque</span>
+                            <input type="number" id="tam-estoque-EG" min="0" step="1" placeholder="0" class="tamanho-row-estoque" disabled>
                           </div>
                           <div class="tamanho-row">
                             <input type="checkbox" id="tam-G1" name="prod-tamanho-unidade-check" value="G1" onchange="toggleTamanhoPrecoUnidade('G1',this.checked)">
                             <label for="tam-G1" class="tamanho-row-label">G1</label>
                             <span class="tamanho-row-rs">R$</span>
                             <input type="number" id="tam-preco-G1" step="0.01" min="0" placeholder="0,00" class="tamanho-row-preco" disabled>
+                            <span class="tamanho-row-est-label">Estoque</span>
+                            <input type="number" id="tam-estoque-G1" min="0" step="1" placeholder="0" class="tamanho-row-estoque" disabled>
                           </div>
                           <div class="tamanho-row">
                             <input type="checkbox" id="tam-G2" name="prod-tamanho-unidade-check" value="G2" onchange="toggleTamanhoPrecoUnidade('G2',this.checked)">
                             <label for="tam-G2" class="tamanho-row-label">G2</label>
                             <span class="tamanho-row-rs">R$</span>
                             <input type="number" id="tam-preco-G2" step="0.01" min="0" placeholder="0,00" class="tamanho-row-preco" disabled>
+                            <span class="tamanho-row-est-label">Estoque</span>
+                            <input type="number" id="tam-estoque-G2" min="0" step="1" placeholder="0" class="tamanho-row-estoque" disabled>
                           </div>
                           <div class="tamanho-row">
                             <input type="checkbox" id="tam-G3" name="prod-tamanho-unidade-check" value="G3" onchange="toggleTamanhoPrecoUnidade('G3',this.checked)">
                             <label for="tam-G3" class="tamanho-row-label">G3</label>
                             <span class="tamanho-row-rs">R$</span>
                             <input type="number" id="tam-preco-G3" step="0.01" min="0" placeholder="0,00" class="tamanho-row-preco" disabled>
+                            <span class="tamanho-row-est-label">Estoque</span>
+                            <input type="number" id="tam-estoque-G3" min="0" step="1" placeholder="0" class="tamanho-row-estoque" disabled>
                           </div>
                         </div>
                       </div>
@@ -1036,9 +1052,12 @@
       // Limpa preview de imagem
       if (typeof _removerImagemProduto === "function") _removerImagemProduto();
       // Desabilita e zera todos os campos de preco dos tamanhos (volume + unidade)
+      // e os campos de estoque por tamanho (exclusivos da coluna por unidade)
       ["200ml","300ml","400ml","500ml","700ml","1L","P","M","G","GG","EG","G1","G2","G3"].forEach(function(v) {
         var inp = document.getElementById("tam-preco-" + v);
+        var est = document.getElementById("tam-estoque-" + v);
         if (inp) { inp.disabled = true; inp.value = ""; }
+        if (est) { est.disabled = true; est.value = ""; }
       });
       // Esconde configuracao de estoque-base
       var cfgBase = document.getElementById("config-estoque-base");
@@ -1333,9 +1352,12 @@
     // ── TAMANHOS COM PREÇO — POR UNIDADE (nova coluna, mesma lógica) ───────
     // Independente da coluna de volume: cada coluna tem seu próprio
     // checkbox "selecionar todos" e não interfere na outra.
+    // Também habilita/limpa o campo de Estoque (exclusivo desta coluna).
     window.toggleTamanhoPrecoUnidade = function(v, ativo) {
       const inp = document.getElementById("tam-preco-" + v);
+      const est = document.getElementById("tam-estoque-" + v);
       if (inp) { inp.disabled = !ativo; if (!ativo) inp.value = ""; }
+      if (est) { est.disabled = !ativo; if (!ativo) est.value = ""; }
       const checks = document.querySelectorAll('input[name="prod-tamanho-unidade-check"]');
       const todos  = document.getElementById("sel-todos-tamanhos-unidade");
       if (todos) todos.checked = [...checks].every(c => c.checked);
@@ -1345,9 +1367,12 @@
       UNIDADES.forEach(v => {
         const cb  = document.getElementById("tam-" + v);
         const inp = document.getElementById("tam-preco-" + v);
+        const est = document.getElementById("tam-estoque-" + v);
         if (cb)  cb.checked  = ativo;
         if (inp) inp.disabled = !ativo;
         if (inp && !ativo) inp.value = "";
+        if (est) est.disabled = !ativo;
+        if (est && !ativo) est.value = "";
       });
     };
 

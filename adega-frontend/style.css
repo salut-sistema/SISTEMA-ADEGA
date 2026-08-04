@@ -205,6 +205,12 @@ h1, h2, h3, h4 { font-family: var(--font-display); }
 }
 .tag-radio:hover span, .tag-check:hover span { border-color: var(--primary); }
 
+.tag-radio-esgotado { cursor: not-allowed; }
+.tag-radio-esgotado span {
+  opacity: .45; text-decoration: line-through; background: var(--surface2);
+}
+.tag-radio-esgotado:hover span { border-color: var(--border); }
+
 /* ============================================================
    ████████╗  PÁGINA CLIENTE — index.html
    ============================================================ */
@@ -501,6 +507,9 @@ body.loja-carregando > *:not(#loja-loading-overlay) {
 .pm-secao label { font-size: 13px; font-weight: 700; color: var(--text-muted); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
 .pm-tamanhos, .pm-complementos { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .pm-secao textarea { resize: none; margin-top: 8px; }
+.pm-obrigatorio { color: var(--danger); font-weight: 800; }
+.pm-erro-tamanho { display: block; margin-top: 8px; color: var(--danger); font-size: 12px; font-weight: 600; }
+.pm-tamanhos-invalido { outline: 2px solid var(--danger); outline-offset: 6px; border-radius: 8px; }
 
 .pm-qtd-row { display: flex; align-items: center; gap: 16px; margin-top: 20px; }
 .pm-qtd {
@@ -962,9 +971,23 @@ body.loja-carregando > *:not(#loja-loading-overlay) {
 .tamanho-row-label { margin: 0; min-width: 44px; font-size: 13px; cursor: pointer; }
 .tamanho-row-rs { font-size: 12px; color: var(--text-muted); flex-shrink: 0; }
 .tamanho-row-preco { width: 90px; padding: 4px 8px; font-size: 13px; }
+.tamanho-row-est-label { font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+.tamanho-row-estoque { width: 60px; padding: 4px 8px; font-size: 13px; }
 
 @media (max-width: 380px) {
-  .tamanho-row-preco { width: 100%; }
+  .tamanho-row-preco, .tamanho-row-estoque { width: 100%; }
+}
+
+/* ============================================================
+   CONTROLE DE ESTOQUE — linha do "Estoque total" (produtos com tamanhos)
+   ============================================================ */
+.estoque-total-linha {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  font-size: 12px; color: var(--text-muted); margin: 2px 0 4px;
+}
+.estoque-total-input {
+  width: 64px; text-align: center; padding: 4px 6px;
+  font-size: 13px; font-weight: 700; color: var(--text);
 }
 
 /* ADM ITEMS */
@@ -1297,6 +1320,25 @@ input[type="color"] {
   text-align: center;
   padding: 6px 8px;
   font-size: 13px;
+}
+
+/* ============================================================
+   CONTROLE DE ESTOQUE — Estoque por Tamanho (colunas laterais)
+   ============================================================ */
+.estoque-tamanhos-colunas {
+  display: flex; flex-wrap: wrap; align-content: flex-start;
+  gap: 8px; flex-shrink: 0; max-width: 260px; justify-content: flex-end;
+}
+.estoque-tamanho-col { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.estoque-tamanho-label {
+  font-size: 10px; font-weight: 700; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: .02em;
+}
+.estoque-tamanho-col input[type="number"] {
+  width: 46px; text-align: center; padding: 4px 2px; font-size: 12px;
+}
+@media (max-width: 420px) {
+  .estoque-tamanhos-colunas { max-width: none; width: 100%; justify-content: flex-start; }
 }
 
 /* ============================================================

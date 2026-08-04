@@ -16,7 +16,7 @@ const ProdutoSchema = new mongoose.Schema({
   categoria:              { type: String, default: "" },
   preco:                  { type: Number, required: true },
   unidade:                { type: String, default: "" },
-  tamanhos:               [{ volume: String, preco: { type: Number, default: 0 } }],
+  tamanhos:               [{ volume: String, preco: { type: Number, default: 0 }, estoque: { type: Number, default: 0 } }],
   estoque:                { type: mongoose.Schema.Types.Mixed, default: "" },
   validade:               { type: String, default: "" },
   ativo:                  { type: Boolean, default: true },
@@ -125,6 +125,9 @@ const PedidoSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 PedidoSchema.index({ empresaId: 1, id: 1 }, { unique: true });
+// Acelera a ordenação "mais recente primeiro" (GET /pedidos), que sem
+// índice fica mais lenta conforme o histórico de vendas cresce.
+PedidoSchema.index({ empresaId: 1, data: -1 });
 
 // ── CONTADOR — usado para gerar o número sequencial do pedido (por empresa) ──
 // Incrementado de forma atômica (evita números repetidos mesmo com pedidos

@@ -80,6 +80,7 @@ const ENUMS = {
     SEM_PRODUTOS: "Nenhum produto encontrado.",
     CARREGANDO_LOJA: "Aguarde, carregando a loja...",
     PEDIDO_EXCLUIDO: "Pedido excluído e estoque revertido!",
+    TAMANHO_OBRIGATORIO: "Selecione um tamanho antes de adicionar ao carrinho.",
   },
   FRASES_CATEGORIAS: {
     acai: "🍇 Cremoso, gelado e irresistível!",
@@ -553,7 +554,10 @@ const WPP = {
       }
     } catch (e) {
       console.error("Erro ao enviar pedido:", e.message);
-      MODAL.erro("Não foi possível enviar seu pedido. Tente novamente.");
+      const msg = e.message && e.message !== "Erro na API"
+        ? e.message
+        : "Não foi possível enviar seu pedido. Tente novamente.";
+      MODAL.erro(msg);
       return;
     }
 
@@ -997,11 +1001,21 @@ function abrirModalProduto(produtoId) {
         <h2>${UTIL.sanitize(produto.nome)}</h2>
         <p class="pm-desc">${UTIL.sanitize(produto.descricao || "")}</p>
         <div class="pm-preco" id="pm-preco-display">${UTIL.formatarMoeda(produto.preco)}</div>
-        ${tamanhos.length ? `<div class="pm-secao"><label>Tamanho:</label><div class="pm-tamanhos">${tamanhos.map(t => {
-          const vol   = typeof t === "object" ? t.volume : t;
-          const preco = typeof t === "object" ? t.preco  : null;
-          return `<label class="tag-radio"><input type="radio" name="pm-tamanho" value="${vol}" data-preco="${preco !== null ? preco : produto.preco}" onchange="pmAtualizarPreco(this)"><span>${vol}${preco !== null ? " — " + UTIL.formatarMoeda(preco) : ""}</span></label>`;
-        }).join("")}</div></div>` : ""}
+        ${tamanhos.length ? `<div class="pm-secao"><label>Tamanho: <span class="pm-obrigatorio">*</span></label><div class="pm-tamanhos" id="pm-tamanhos-lista">${tamanhos.map(t => {
+          const vol        = typeof t === "object" ? t.volume : t;
+          const precoBruto = typeof t === "object" ? (Number(t.preco) || 0) : 0;
+          const temPreco   = precoBruto > 0;
+          const precoEfetivo = temPreco ? precoBruto : produto.preco;
+          // Bloqueia o tamanho quando o produto tem estoque controlado
+          // (Estoque Total definido, não infinito) e a quantidade desse
+          // tamanho específico chegou a 0. Como o modal é montado a partir
+          // do STATE atual, assim que o admin repõe o estoque do tamanho
+          // a opção volta a aparecer liberada automaticamente.
+          const estoqueTamanho = typeof t === "object" ? Number(t.estoque || 0) : 0;
+          const estoqueControlado = produto.estoque !== "" && produto.estoque !== undefined && produto.estoque !== null;
+          const esgotado = estoqueControlado && estoqueTamanho <= 0;
+          return `<label class="tag-radio${esgotado ? " tag-radio-esgotado" : ""}"><input type="radio" name="pm-tamanho" value="${vol}" data-preco="${precoEfetivo}" onchange="pmAtualizarPreco(this)"${esgotado ? " disabled" : ""}><span>${vol}${temPreco ? " — " + UTIL.formatarMoeda(precoBruto) : ""}${esgotado ? " (Esgotado)" : ""}</span></label>`;
+        }).join("")}</div><small class="pm-erro-tamanho" id="pm-erro-tamanho" style="display:none;">Selecione um tamanho para continuar</small></div>` : ""}
         ${complementosDisponiveis.length ? `<div class="pm-secao"><label>Complementos:</label><div class="pm-complementos">${complementosDisponiveis.map(c => `<label class="tag-check"><input type="checkbox" name="pm-comp" value="${c.id}" data-nome="${c.nome}" data-preco="${c.preco || 0}"><span>${c.nome}${c.preco ? ` (+${UTIL.formatarMoeda(c.preco)})` : ""}</span></label>`).join("")}</div></div>` : ""}
         <div class="pm-secao"><label>Observação:</label><textarea id="pm-obs" placeholder="Ex: sem açúcar..." rows="2"></textarea></div>
         <div class="pm-qtd-row">
@@ -1028,8 +1042,16 @@ window.pmQtd = pmQtd;
 function pmAdicionarCarrinho(produtoId) {
   const produto = STATE.get("produtos").find(p => p.id === produtoId);
   if (!produto) return;
-  const qtd = parseInt(document.getElementById("pm-qtd-val")?.textContent) || 1;
   const tamanhoEl = document.querySelector('input[name="pm-tamanho"]:checked');
+  // Se o produto tem tamanhos cadastrados (por volume OU por unidade), a seleção é obrigatória.
+  if ((produto.tamanhos || []).length > 0 && !tamanhoEl) {
+    const erroEl = document.getElementById("pm-erro-tamanho");
+    if (erroEl) erroEl.style.display = "block";
+    document.getElementById("pm-tamanhos-lista")?.classList.add("pm-tamanhos-invalido");
+    MODAL.erro(ENUMS.MSGS.TAMANHO_OBRIGATORIO);
+    return;
+  }
+  const qtd = parseInt(document.getElementById("pm-qtd-val")?.textContent) || 1;
   const tamanho   = tamanhoEl?.value || "";
   const precoTam  = tamanhoEl ? parseFloat(tamanhoEl.dataset.preco) || produto.preco : produto.preco;
   const comps = [...document.querySelectorAll('input[name="pm-comp"]:checked')]
@@ -1043,6 +1065,9 @@ window.pmAdicionarCarrinho = pmAdicionarCarrinho;
 function pmAtualizarPreco(input) {
   const el = document.getElementById("pm-preco-display");
   if (el) el.textContent = UTIL.formatarMoeda(parseFloat(input.dataset.preco) || 0);
+  // Limpa o estado de erro assim que um tamanho é selecionado
+  document.getElementById("pm-erro-tamanho")?.style && (document.getElementById("pm-erro-tamanho").style.display = "none");
+  document.getElementById("pm-tamanhos-lista")?.classList.remove("pm-tamanhos-invalido");
 }
 window.pmAtualizarPreco = pmAtualizarPreco;
 
@@ -1248,12 +1273,22 @@ function renderizarProdutos() {
 }
 
 function cardProduto(p) {
-  // Calcular preço exibido: se tem tamanhos com preços, mostrar "a partir de"
+  // Calcular preço exibido no card.
+  // Regra: o "Preço (R$) *" cadastrado no produto é sempre o valor de
+  // referência. Se um tamanho tiver preço próprio definido (> 0), esse
+  // tamanho usa o preço dele; tamanhos sem preço (0,00) herdam o preço
+  // base do produto — a mesma regra já usada dentro do modal ao clicar
+  // em um tamanho (pmAtualizarPreco / precoEfetivo).
   const tams = (p.tamanhos || []).filter(t => typeof t === "object" && t.volume);
   let precoLabel = "";
   if (tams.length > 0) {
-    const menor = Math.min(...tams.map(t => t.preco || 0));
-    precoLabel = `<span class="pc-preco"><small style="font-size:10px;font-weight:400;">a partir de</small><br>${UTIL.formatarMoeda(menor)}</span>`;
+    const precosEfetivos = tams.map(t => (Number(t.preco) || 0) > 0 ? Number(t.preco) : (Number(p.preco) || 0));
+    const menor = Math.min(...precosEfetivos);
+    const maior = Math.max(...precosEfetivos);
+    precoLabel = menor === maior
+      // Todos os tamanhos resultam no mesmo valor (ex: nenhum tem preço próprio, prevalece o preço base) → mostra o preço simples, sem "a partir de"
+      ? `<span class="pc-preco">${UTIL.formatarMoeda(menor)}</span>`
+      : `<span class="pc-preco"><small style="font-size:10px;font-weight:400;">a partir de</small><br>${UTIL.formatarMoeda(menor)}</span>`;
   } else {
     precoLabel = `<span class="pc-preco">${UTIL.formatarMoeda(p.preco)}</span>`;
   }
@@ -1359,11 +1394,16 @@ function renderizarAdmProdutos() {
               <strong>${UTIL.sanitize(p.nome)}</strong>
               <small>${UTIL.formatarMoeda(p.preco)} / ${p.unidade || "un"} | Estoque: ${p.estoque ?? "∞"} | Vendas: ${p.vendas || 0}</small>
               <small>${UTIL.sanitize(nomeCategoria)}</small>
-              ${(p.tamanhos && p.tamanhos.length) ? `<small>Tamanhos: ${p.tamanhos.map(t => typeof t === "object" ? t.volume + " — " + UTIL.formatarMoeda(t.preco) : t).join(" | ")}</small>` : ""}
+              ${(p.tamanhos && p.tamanhos.length) ? `<small>Tamanhos: ${p.tamanhos.map(t => {
+                if (typeof t !== "object") return t;
+                const preco = Number(t.preco) || 0;
+                return preco > 0 ? `${t.volume} — ${UTIL.formatarMoeda(preco)}` : t.volume;
+              }).join(" | ")}</small>` : ""}
               ${!p.ativo ? `<span class="badge-warning">Pausado</span>` : ""}
             </div>
             <div class="adm-item-acoes">
               <button class="btn-icon" onclick="editarProduto('${p.id}')" title="Editar">✏️</button>
+              <button class="btn-icon" onclick="duplicarProduto('${p.id}')" title="Duplicar">📋</button>
               <button class="btn-icon" onclick="pausarProduto('${p.id}')" title="${p.ativo ? 'Pausar' : 'Reativar'}">${p.ativo ? "⏸" : "▶️"}</button>
               <button class="btn-icon btn-icon-del" onclick="excluirProduto('${p.id}')" title="Excluir">🗑️</button>
 
@@ -1380,6 +1420,34 @@ function pausarProduto(id) {
   MODAL.toast("Status do produto atualizado.");
 }
 window.pausarProduto = pausarProduto;
+
+// Duplica um produto já cadastrado, criando um novo produto independente
+// (novo id, gerado pelo próprio PRODUTOS.criar) com os mesmos dados —
+// nome, preço, categoria, imagem, complementos vinculados, tamanhos etc.
+// Por ser um produto novo: começa ativo, com 0 vendas, e com o estoque
+// zerado (total e por tamanho) para não misturar com o estoque físico
+// do produto original — o admin ajusta o estoque da cópia normalmente
+// em Controle de Estoque. Passa pelo mesmo PRODUTOS.criar() do formulário,
+// então fica automaticamente integrado com loja, estoque, dashboard etc.
+function duplicarProduto(id) {
+  const original = STATE.get("produtos").find(p => p.id === id);
+  if (!original) return;
+
+  const { id: _id, dataCriacao: _dc, vendas: _vendas, ativo: _ativo, estoque: _estoque, ...resto } = original;
+  const copia = {
+    ...resto,
+    nome: `${original.nome} (Cópia)`,
+    // Estoque infinito (campo vazio) permanece infinito; estoque numérico zera.
+    estoque: original.estoque === "" ? "" : 0,
+    tamanhos: (original.tamanhos || []).map(t =>
+      typeof t === "object" ? { volume: t.volume, preco: t.preco, estoque: 0 } : t
+    ),
+  };
+  PRODUTOS.criar(copia);
+  renderizarAdmProdutos();
+  MODAL.toast("Produto duplicado com sucesso!");
+}
+window.duplicarProduto = duplicarProduto;
 
 function excluirProduto(id) {
   MODAL.pedirSenha("Excluir Produto", () => {
@@ -1453,6 +1521,44 @@ function renderizarControleEstoque() {
                 </div>
               </div>`;
           }
+          // Produto com tamanhos (por volume ou por unidade): estoque
+          // individual por tamanho, em pequenas colunas na lateral.
+          // O TOTAL usa sempre "p.estoque" (o mesmo campo lido pelo dashboard,
+          // pelos alertas de estoque baixo e pelo desconto de estoque na
+          // venda) — e agora também é editável, não apenas informativo.
+          // Ao editar um tamanho específico (atualizarEstoqueTamanho), o total
+          // é recalculado automaticamente como a soma dos tamanhos. Ao editar
+          // o total diretamente aqui, ele é gravado como ajuste manual.
+          if (!p.usaEstoqueBase && Array.isArray(p.tamanhos) && p.tamanhos.length) {
+            const alertaBaixo = (p.estoque !== undefined && p.estoque !== "" && Number(p.estoque) <= 5)
+              ? `<span class="badge-danger">⚠️ Estoque Baixo</span>` : "";
+            return `
+              <div class="adm-item">
+                <div class="adm-item-img">${p.imagem ? `<img src="${UTIL.sanitize(p.imagem)}" alt="">` : `<span>${p.emoji || "🛍️"}</span>`}</div>
+                <div class="adm-item-info">
+                  <strong>${UTIL.sanitize(p.nome)}</strong>
+                  <div class="estoque-total-linha">
+                    <span>Estoque total:</span>
+                    <input type="number" min="0" value="${p.estoque ?? 0}" class="estoque-total-input"
+                      onchange="atualizarEstoque('${p.id}', this.value)">
+                    <span>peças | Vendas: ${p.vendas || 0}</span>
+                  </div>
+                  ${alertaBaixo}
+                </div>
+                <div class="estoque-tamanhos-colunas">
+                  ${p.tamanhos.map(t => {
+                    const label = typeof t === "object" ? t.volume : t;
+                    const qtd   = typeof t === "object" ? (t.estoque ?? 0) : 0;
+                    return `
+                      <div class="estoque-tamanho-col">
+                        <span class="estoque-tamanho-label">${UTIL.sanitize(label)}</span>
+                        <input type="number" min="0" value="${qtd}"
+                          onchange="atualizarEstoqueTamanho('${p.id}','${UTIL.sanitize(label)}', this.value)">
+                      </div>`;
+                  }).join("")}
+                </div>
+              </div>`;
+          }
           // Produto por unidade: comportamento original inalterado
           const alertaBaixo = (p.estoque !== undefined && p.estoque !== "" && Number(p.estoque) <= 5)
             ? `<span class="badge-danger">⚠️ Estoque Baixo</span>` : "";
@@ -1480,7 +1586,23 @@ window.renderizarControleEstoque = renderizarControleEstoque;
 function atualizarEstoque(id, valor) {
   // Protege qualquer alteração manual de estoque com a senha master (empresaConfig.js)
   MODAL.pedirSenha("Alterar Estoque", () => {
-    PRODUTOS.editar(id, { estoque: valor === "" ? "" : parseInt(valor) });
+    const prod = STATE.get("produtos").find(p => p.id === id);
+    const novoTotal = valor === "" ? "" : parseInt(valor);
+
+    // Produto com tamanhos: o Estoque Total é o limite (cap) da distribuição
+    // manual entre os tamanhos — não pode ficar menor do que a soma já
+    // distribuída, senão a distribuição ficaria inválida.
+    if (prod && Array.isArray(prod.tamanhos) && prod.tamanhos.length && novoTotal !== "") {
+      const somaDistribuida = prod.tamanhos.reduce((soma, t) =>
+        soma + (Number(typeof t === "object" ? t.estoque : 0) || 0), 0);
+      if (novoTotal < somaDistribuida) {
+        MODAL.erro(`Quantidade não permitida: já existem ${somaDistribuida} unidades distribuídas entre os tamanhos. O Estoque Total não pode ser menor que isso. Reduza a quantidade dos tamanhos antes de diminuir o total.`);
+        renderizarControleEstoque();
+        return;
+      }
+    }
+
+    PRODUTOS.editar(id, { estoque: novoTotal });
     MODAL.toast("Estoque atualizado!");
     DASHBOARD.atualizar();
   }, () => {
@@ -1489,6 +1611,43 @@ function atualizarEstoque(id, valor) {
   });
 }
 window.atualizarEstoque = atualizarEstoque;
+
+// Estoque por Tamanho — altera a quantidade de UM tamanho específico
+// (ex: "P", "700ml") e recalcula o total do produto como a soma de
+// todos os tamanhos, mantendo os dois valores sempre sincronizados.
+function atualizarEstoqueTamanho(produtoId, tamanhoLabel, valor) {
+  MODAL.pedirSenha("Alterar Estoque", () => {
+    const produtos = STATE.get("produtos");
+    const prod = produtos.find(p => p.id === produtoId);
+    if (!prod) return;
+    const novaQtd = valor === "" ? 0 : Math.max(0, parseInt(valor) || 0);
+    const tamanhosAtualizados = (prod.tamanhos || []).map(t => {
+      const label  = typeof t === "object" ? t.volume : t;
+      const preco  = typeof t === "object" ? (Number(t.preco) || 0) : 0;
+      const estoqueAtual = typeof t === "object" ? (Number(t.estoque) || 0) : 0;
+      return { volume: label, preco, estoque: label === tamanhoLabel ? novaQtd : estoqueAtual };
+    });
+
+    // O Estoque Total é o limite (cap): a soma distribuída pelos tamanhos
+    // nunca pode ultrapassá-lo (quando o total é um valor definido, não
+    // infinito). Se ultrapassar, bloqueia e avisa em um modal — nada é salvo.
+    const totalCap = prod.estoque;
+    const somaDistribuida = tamanhosAtualizados.reduce((soma, t) => soma + (Number(t.estoque) || 0), 0);
+    if (totalCap !== "" && totalCap !== undefined && totalCap !== null && somaDistribuida > Number(totalCap)) {
+      MODAL.erro(`Quantidade não permitida: a soma dos tamanhos (${somaDistribuida}) ultrapassa o Estoque Total cadastrado (${totalCap}). Ajuste os valores ou aumente o Estoque Total antes de distribuir.`);
+      renderizarControleEstoque();
+      return;
+    }
+
+    PRODUTOS.editar(produtoId, { tamanhos: tamanhosAtualizados });
+    MODAL.toast("Estoque atualizado!");
+    DASHBOARD.atualizar();
+  }, () => {
+    // Cancelado ou senha incorreta: reverte o valor exibido no campo
+    renderizarControleEstoque();
+  });
+}
+window.atualizarEstoqueTamanho = atualizarEstoqueTamanho;
 
 // ADMIN — Categorias
 function renderizarAdmCategorias() {
@@ -1986,9 +2145,18 @@ window._pedAbrirProduto = function(pedidoId, produtoId) {
         <p class="pm-desc">${UTIL.sanitize(produto.descricao || "")}</p>
         <div class="pm-preco" id="pm-preco-display">${UTIL.formatarMoeda(produto.preco)}</div>
         ${tamanhos.length
-          ? `<div class="pm-secao"><label>Tamanho:</label><div class="pm-tamanhos">
-              ${tamanhos.map(t => { const vol = typeof t === "object" ? t.volume : t; const pr = typeof t === "object" ? t.preco : produto.preco; return `<label class="tag-radio"><input type="radio" name="pm-tamanho" value="${vol}" data-preco="${pr}" onchange="pmAtualizarPreco(this)"><span>${vol} — ${UTIL.formatarMoeda(pr)}</span></label>`; }).join("")}
-             </div></div>`
+          ? `<div class="pm-secao"><label>Tamanho: <span class="pm-obrigatorio">*</span></label><div class="pm-tamanhos" id="pm-tamanhos-lista">
+              ${tamanhos.map(t => {
+                const vol        = typeof t === "object" ? t.volume : t;
+                const precoBruto = typeof t === "object" ? (Number(t.preco) || 0) : 0;
+                const temPreco   = precoBruto > 0;
+                const precoEfetivo = temPreco ? precoBruto : produto.preco;
+                const estoqueTamanho = typeof t === "object" ? Number(t.estoque || 0) : 0;
+                const estoqueControlado = produto.estoque !== "" && produto.estoque !== undefined && produto.estoque !== null;
+                const esgotado = estoqueControlado && estoqueTamanho <= 0;
+                return `<label class="tag-radio${esgotado ? " tag-radio-esgotado" : ""}"><input type="radio" name="pm-tamanho" value="${vol}" data-preco="${precoEfetivo}" onchange="pmAtualizarPreco(this)"${esgotado ? " disabled" : ""}><span>${vol}${temPreco ? " — " + UTIL.formatarMoeda(precoBruto) : ""}${esgotado ? " (Esgotado)" : ""}</span></label>`;
+              }).join("")}
+             </div><small class="pm-erro-tamanho" id="pm-erro-tamanho" style="display:none;">Selecione um tamanho para continuar</small></div>`
           : ""}
         ${complementosDisponiveis.length
           ? `<div class="pm-secao"><label>Complementos:</label><div class="pm-complementos">
@@ -2018,8 +2186,19 @@ window._pedConfirmarProduto = function(pedidoId, produtoId) {
   const produto = STATE.get("produtos").find(p => p.id === produtoId);
   if (!produto) return;
 
+  const tamanhoEl = document.querySelector('input[name="pm-tamanho"]:checked');
+  // Se o produto tem tamanhos cadastrados (por volume OU por unidade), a seleção é obrigatória —
+  // necessário também aqui, pois o desconto de estoque por tamanho depende do tamanho informado.
+  if ((produto.tamanhos || []).length > 0 && !tamanhoEl) {
+    const erroEl = document.getElementById("pm-erro-tamanho");
+    if (erroEl) erroEl.style.display = "block";
+    document.getElementById("pm-tamanhos-lista")?.classList.add("pm-tamanhos-invalido");
+    MODAL.erro(ENUMS.MSGS.TAMANHO_OBRIGATORIO);
+    return;
+  }
+
   const qtd     = parseInt(document.getElementById("pm-qtd-val")?.textContent) || 1;
-  const tamanho = document.querySelector('input[name="pm-tamanho"]:checked')?.value || "";
+  const tamanho = tamanhoEl?.value || "";
   const comps   = [...document.querySelectorAll('input[name="pm-comp"]:checked')]
     .map(el => ({ id: el.value, nome: el.dataset.nome, preco: parseFloat(el.dataset.preco) || 0 }));
   const obs     = document.getElementById("pm-obs")?.value || "";
@@ -2212,11 +2391,13 @@ function preencherFormProduto(p) {
   ENUMS.TAMANHOS_TODOS.forEach(v => {
     const cb  = document.getElementById("tam-" + v);
     const inp = document.getElementById("tam-preco-" + v);
+    const est = document.getElementById("tam-estoque-" + v);
     if (!cb) return;
     const tam = (p.tamanhos || []).find(t => (typeof t === "object" ? t.volume : t) === v);
     const ativo = !!tam;
     cb.checked   = ativo;
     if (inp) { inp.disabled = !ativo; inp.value = ativo && typeof tam === "object" ? (tam.preco || "") : ""; }
+    if (est) { est.disabled = !ativo; est.value = ativo && typeof tam === "object" ? (tam.estoque ?? "") : ""; }
   });
   const todosEl = document.getElementById("sel-todos-tamanhos");
   if (todosEl) todosEl.checked = ENUMS.TAMANHOS_VOLUME.every(v => document.getElementById("tam-" + v)?.checked);
@@ -2338,10 +2519,19 @@ function bindFormProduto() {
     e.preventDefault();
     const g = id => document.getElementById(id)?.value?.trim() || "";
     const id = g("form-produto-id");
-    // Ler tamanhos com preço (por volume + por unidade)
+    // Ler tamanhos com preço (por volume + por unidade).
+    // O campo de "Estoque" por tamanho só existe na coluna Tamanhos por
+    // Unidade (tam-estoque-P, tam-estoque-M...) — tamanhos por volume não
+    // têm esse input no cadastro, então continuam exatamente como antes.
     const tamanhos = ENUMS.TAMANHOS_TODOS
       .filter(v => document.getElementById("tam-" + v)?.checked)
-      .map(v => ({ volume: v, preco: parseFloat(document.getElementById("tam-preco-" + v)?.value) || 0 }));
+      .map(v => {
+        const preco = parseFloat(document.getElementById("tam-preco-" + v)?.value) || 0;
+        const estoqueInput = document.getElementById("tam-estoque-" + v);
+        return estoqueInput
+          ? { volume: v, preco, estoque: parseInt(estoqueInput.value) || 0 }
+          : { volume: v, preco };
+      });
     const compsVinculados = [...document.querySelectorAll('input[name="prod-comp"]:checked')].map(el => el.value);
     const dados = {
       nome: g("prod-nome"), descricao: g("prod-descricao"), imagem: g("prod-imagem"),
@@ -2359,6 +2549,14 @@ function bindFormProduto() {
     };
     if (!dados.nome || !dados.preco) { MODAL.erro(ENUMS.MSGS.CAMPO_OBRIGATORIO); return; }
 
+    // A soma do estoque distribuído entre os tamanhos por unidade não pode
+    // ultrapassar o Estoque Total informado (quando ele não está vazio/infinito).
+    const somaEstoqueUnidade = tamanhos.reduce((soma, t) => soma + (Number(t.estoque) || 0), 0);
+    if (dados.estoque !== "" && somaEstoqueUnidade > dados.estoque) {
+      MODAL.erro(`Quantidade não permitida: a soma do estoque distribuído entre os tamanhos (${somaEstoqueUnidade}) ultrapassa o Estoque Total informado (${dados.estoque}). Ajuste os valores.`);
+      return;
+    }
+
     function _limparFormularioProduto() {
       form.reset();
       document.getElementById("form-produto-id").value = "";
@@ -2371,8 +2569,10 @@ function bindFormProduto() {
       ENUMS.TAMANHOS_TODOS.forEach(v => {
         const cb  = document.getElementById("tam-" + v);
         const inp = document.getElementById("tam-preco-" + v);
+        const est = document.getElementById("tam-estoque-" + v);
         if (cb)  cb.checked = false;
         if (inp) { inp.value = ""; inp.disabled = true; }
+        if (est) { est.value = ""; est.disabled = true; }
       });
       const todosEl = document.getElementById("sel-todos-tamanhos");
       if (todosEl) todosEl.checked = false;
@@ -2485,7 +2685,10 @@ function bindCarrinhoFinalizacao() {
       CARRINHO._atualizarTotais();
     });
   });
-  document.getElementById("btn-finalizar")?.addEventListener("click", async () => {
+  document.getElementById("btn-finalizar")?.addEventListener("click", async (ev) => {
+    const btn = ev.currentTarget;
+    if (btn.disabled) return; // já está processando este clique, ignora repiques
+
     const nome = document.getElementById("cliente-nome")?.value?.trim();
     const tel = document.getElementById("cliente-telefone")?.value?.trim();
     const tipoEntrega = document.querySelector('input[name="tipo-entrega"]:checked')?.value;
@@ -2495,7 +2698,20 @@ function bindCarrinhoFinalizacao() {
       MODAL.erro("Informe o endereço de entrega.");
       return;
     }
-    await WPP.enviar({ nome, telefone: tel }, tipoEntrega, pag, endereco);
+
+    // Trava o botão já no primeiro clique — se o banco demorar pra
+    // responder (comum em plano gratuito) e o cliente clicar de novo
+    // achando que não funcionou, o segundo clique é ignorado e não gera
+    // pedido duplicado. Reabilita ao final, com sucesso ou erro.
+    const textoOriginal = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Enviando pedido...";
+    try {
+      await WPP.enviar({ nome, telefone: tel }, tipoEntrega, pag, endereco);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+    }
   });
 }
 
