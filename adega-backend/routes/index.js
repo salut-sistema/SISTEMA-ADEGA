@@ -78,6 +78,12 @@ router.post("/pedidos/publico/:slug", async (req, res) => {
     if (!empresa || !empresaValida(empresa)) return err(res, "Loja não encontrada", 404);
 
     const eId = empresa.empresaId;
+
+    // Valida estoque disponível ANTES de criar o pedido — impede vender
+    // além do que existe (evita a "venda fantasma" no histórico).
+    const errosEstoque = await _validarEstoqueSuficiente(eId, req.body.itens || []);
+    if (errosEstoque.length) return err(res, "Estoque insuficiente: " + errosEstoque.join(" | "), 409);
+
     const numeroPedido = await proximoNumeroPedido(eId);
     const pedido = await Pedido.create({ ...req.body, empresaId: eId, numeroPedido });
 
@@ -337,6 +343,9 @@ router.get("/pedidos", async (req, res) => {
 // POST /api/pedidos — cria pedido e desconta estoque automaticamente
 router.post("/pedidos", async (req, res) => {
   try {
+    const errosEstoque = await _validarEstoqueSuficiente(req.empresaId, req.body.itens || []);
+    if (errosEstoque.length) return err(res, "Estoque insuficiente: " + errosEstoque.join(" | "), 409);
+
     const numeroPedido = await proximoNumeroPedido(req.empresaId);
     const pedido = await Pedido.create({ ...req.body, empresaId: req.empresaId, numeroPedido });
     await _descontarEstoque(req.empresaId, pedido.itens);
@@ -538,6 +547,43 @@ function _converterFatorParaKgOuL(qtd, unidade) {
     case "l":  return qtd;
     default:   return qtd;
   }
+}
+
+// ============================================================
+// FUNÇÃO INTERNA — valida se há estoque suficiente ANTES de criar o
+// pedido. Sem essa checagem, era possível vender mais do que o
+// disponível (ex: 3 unidades de um tamanho com só 2 em estoque), o que
+// registrava uma venda "fantasma" no histórico e deixava o total e a
+// soma por tamanho dessincronizados (total descontava a quantidade
+// pedida inteira, enquanto o tamanho ficava travado em 0 sem poder ir
+// negativo). Retorna uma lista de mensagens de erro (vazia = tudo ok).
+// ============================================================
+async function _validarEstoqueSuficiente(empresaId, itens = []) {
+  const erros = [];
+  for (const item of itens) {
+    const prod = await Produto.findOne({ empresaId, id: item.produtoId });
+    if (!prod) continue; // produto removido — deixa passar, tratado em outro lugar
+    if (prod.usaEstoqueBase) continue; // mecanismo separado (matéria-prima), não validado aqui
+
+    if (item.tamanho && Array.isArray(prod.tamanhos) && prod.tamanhos.length) {
+      // Só valida por tamanho quando o produto tem Estoque Total definido
+      // (não infinito) — mesma regra usada para "bloquear" tamanho na loja.
+      const estoqueControlado = prod.estoque !== "" && prod.estoque !== undefined && prod.estoque !== null;
+      if (estoqueControlado) {
+        const tam = prod.tamanhos.find(t => t.volume === item.tamanho);
+        const disponivel = tam ? Number(tam.estoque || 0) : 0;
+        if (disponivel < item.quantidade) {
+          erros.push(`${prod.nome} (${item.tamanho}): apenas ${disponivel} disponível(is), pedido pede ${item.quantidade}`);
+        }
+      }
+    } else if (prod.estoque !== "" && prod.estoque !== undefined && prod.estoque !== null) {
+      const disponivel = Number(prod.estoque);
+      if (disponivel < item.quantidade) {
+        erros.push(`${prod.nome}: apenas ${disponivel} disponível(is), pedido pede ${item.quantidade}`);
+      }
+    }
+  }
+  return erros;
 }
 
 // ============================================================

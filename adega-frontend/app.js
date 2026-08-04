@@ -554,7 +554,10 @@ const WPP = {
       }
     } catch (e) {
       console.error("Erro ao enviar pedido:", e.message);
-      MODAL.erro("Não foi possível enviar seu pedido. Tente novamente.");
+      const msg = e.message && e.message !== "Erro na API"
+        ? e.message
+        : "Não foi possível enviar seu pedido. Tente novamente.";
+      MODAL.erro(msg);
       return;
     }
 
@@ -1003,7 +1006,15 @@ function abrirModalProduto(produtoId) {
           const precoBruto = typeof t === "object" ? (Number(t.preco) || 0) : 0;
           const temPreco   = precoBruto > 0;
           const precoEfetivo = temPreco ? precoBruto : produto.preco;
-          return `<label class="tag-radio"><input type="radio" name="pm-tamanho" value="${vol}" data-preco="${precoEfetivo}" onchange="pmAtualizarPreco(this)"><span>${vol}${temPreco ? " — " + UTIL.formatarMoeda(precoBruto) : ""}</span></label>`;
+          // Bloqueia o tamanho quando o produto tem estoque controlado
+          // (Estoque Total definido, não infinito) e a quantidade desse
+          // tamanho específico chegou a 0. Como o modal é montado a partir
+          // do STATE atual, assim que o admin repõe o estoque do tamanho
+          // a opção volta a aparecer liberada automaticamente.
+          const estoqueTamanho = typeof t === "object" ? Number(t.estoque || 0) : 0;
+          const estoqueControlado = produto.estoque !== "" && produto.estoque !== undefined && produto.estoque !== null;
+          const esgotado = estoqueControlado && estoqueTamanho <= 0;
+          return `<label class="tag-radio${esgotado ? " tag-radio-esgotado" : ""}"><input type="radio" name="pm-tamanho" value="${vol}" data-preco="${precoEfetivo}" onchange="pmAtualizarPreco(this)"${esgotado ? " disabled" : ""}><span>${vol}${temPreco ? " — " + UTIL.formatarMoeda(precoBruto) : ""}${esgotado ? " (Esgotado)" : ""}</span></label>`;
         }).join("")}</div><small class="pm-erro-tamanho" id="pm-erro-tamanho" style="display:none;">Selecione um tamanho para continuar</small></div>` : ""}
         ${complementosDisponiveis.length ? `<div class="pm-secao"><label>Complementos:</label><div class="pm-complementos">${complementosDisponiveis.map(c => `<label class="tag-check"><input type="checkbox" name="pm-comp" value="${c.id}" data-nome="${c.nome}" data-preco="${c.preco || 0}"><span>${c.nome}${c.preco ? ` (+${UTIL.formatarMoeda(c.preco)})` : ""}</span></label>`).join("")}</div></div>` : ""}
         <div class="pm-secao"><label>Observação:</label><textarea id="pm-obs" placeholder="Ex: sem açúcar..." rows="2"></textarea></div>
@@ -2140,7 +2151,10 @@ window._pedAbrirProduto = function(pedidoId, produtoId) {
                 const precoBruto = typeof t === "object" ? (Number(t.preco) || 0) : 0;
                 const temPreco   = precoBruto > 0;
                 const precoEfetivo = temPreco ? precoBruto : produto.preco;
-                return `<label class="tag-radio"><input type="radio" name="pm-tamanho" value="${vol}" data-preco="${precoEfetivo}" onchange="pmAtualizarPreco(this)"><span>${vol}${temPreco ? " — " + UTIL.formatarMoeda(precoBruto) : ""}</span></label>`;
+                const estoqueTamanho = typeof t === "object" ? Number(t.estoque || 0) : 0;
+                const estoqueControlado = produto.estoque !== "" && produto.estoque !== undefined && produto.estoque !== null;
+                const esgotado = estoqueControlado && estoqueTamanho <= 0;
+                return `<label class="tag-radio${esgotado ? " tag-radio-esgotado" : ""}"><input type="radio" name="pm-tamanho" value="${vol}" data-preco="${precoEfetivo}" onchange="pmAtualizarPreco(this)"${esgotado ? " disabled" : ""}><span>${vol}${temPreco ? " — " + UTIL.formatarMoeda(precoBruto) : ""}${esgotado ? " (Esgotado)" : ""}</span></label>`;
               }).join("")}
              </div><small class="pm-erro-tamanho" id="pm-erro-tamanho" style="display:none;">Selecione um tamanho para continuar</small></div>`
           : ""}
