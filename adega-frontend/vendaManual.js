@@ -77,9 +77,6 @@ const VENDA_MANUAL = {
     const carrinho = STATE.get("carrinho");
     if (!carrinho.length) { MODAL.erro(ENUMS.MSGS.CARRINHO_VAZIO); return; }
 
-    const btn = document.getElementById("btn-finalizar-venda");
-    if (btn?.disabled) return; // já está processando este clique, ignora repiques
-
     const nome            = document.getElementById("cliente-nome")?.value?.trim() || "Cliente Balcão";
     const telefone        = document.getElementById("cliente-telefone")?.value?.trim() || "";
     const tipoEntrega     = document.querySelector('input[name="tipo-entrega"]:checked')?.value || ENUMS.TIPO_ENTREGA.RETIRADA;
@@ -90,11 +87,6 @@ const VENDA_MANUAL = {
       MODAL.erro("Informe o endereço de entrega.");
       return;
     }
-
-    // Trava o botão já no primeiro clique — mesma proteção da loja do
-    // cliente, evita registrar a venda duas vezes se o banco demorar.
-    const textoOriginal = btn?.textContent;
-    if (btn) { btn.disabled = true; btn.textContent = "Registrando..."; }
 
     const subtotal = CARRINHO.total();
     const taxa = (tipoEntrega === ENUMS.TIPO_ENTREGA.ENTREGA && CONFIG.delivery?.entregaAtiva)
@@ -153,8 +145,6 @@ const VENDA_MANUAL = {
       // Erro na venda manual nunca deve travar o restante do painel
       console.error("Erro ao registrar venda manual:", e.message);
       MODAL.erro("Erro ao registrar a venda: " + e.message);
-    } finally {
-      if (btn) { btn.disabled = false; btn.textContent = textoOriginal; }
     }
   },
 

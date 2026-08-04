@@ -83,18 +83,18 @@ const ENUMS = {
     TAMANHO_OBRIGATORIO: "Selecione um tamanho antes de adicionar ao carrinho.",
   },
   FRASES_CATEGORIAS: {
-    acai: "",
-    sorvete: "",
-    cafe: "",
-    suco: "",
-    fruta: "",
-    verdura: "",
-    legume: "",
-    lanche: "",
-    doce: "",
-    bebida: "",
-    complemento: "",
-    default: "",
+    acai: "Qualidade que faz a diferença em cada detalhe.",
+    sorvete: "Escolha perfeita para quem valoriza qualidade.",
+    cafe: "Feito para superar as suas expectativas.",
+    suco: "Um dos favoritos de quem busca excelência.",
+    fruta: " A combinação ideal entre qualidade e praticidade.",
+    verdura: " Um produto pensado para o seu dia a dia.",
+    legume: " Mais qualidade, mais confiança, mais satisfação.",
+    lanche: "Descubra um novo padrão de qualidade.",
+    doce: "Qualidade, cuidado e atenção em cada detalhe.",
+    bebida: "Produzido com dedicação para surpreender você.",
+    complemento:  "Perfeito para tornar qualquer momento ainda melhor.",
+    default: "Uma escolha inteligente para quem busca o melhor.",
   },
   // ── TAMANHOS DE PRODUTO ─────────────────────────────────────
   // Duas modalidades independentes, que alimentam o mesmo campo
@@ -2685,10 +2685,7 @@ function bindCarrinhoFinalizacao() {
       CARRINHO._atualizarTotais();
     });
   });
-  document.getElementById("btn-finalizar")?.addEventListener("click", async (ev) => {
-    const btn = ev.currentTarget;
-    if (btn.disabled) return; // já está processando este clique, ignora repiques
-
+  document.getElementById("btn-finalizar")?.addEventListener("click", async () => {
     const nome = document.getElementById("cliente-nome")?.value?.trim();
     const tel = document.getElementById("cliente-telefone")?.value?.trim();
     const tipoEntrega = document.querySelector('input[name="tipo-entrega"]:checked')?.value;
@@ -2698,20 +2695,7 @@ function bindCarrinhoFinalizacao() {
       MODAL.erro("Informe o endereço de entrega.");
       return;
     }
-
-    // Trava o botão já no primeiro clique — se o banco demorar pra
-    // responder (comum em plano gratuito) e o cliente clicar de novo
-    // achando que não funcionou, o segundo clique é ignorado e não gera
-    // pedido duplicado. Reabilita ao final, com sucesso ou erro.
-    const textoOriginal = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = "Enviando pedido...";
-    try {
-      await WPP.enviar({ nome, telefone: tel }, tipoEntrega, pag, endereco);
-    } finally {
-      btn.disabled = false;
-      btn.textContent = textoOriginal;
-    }
+    await WPP.enviar({ nome, telefone: tel }, tipoEntrega, pag, endereco);
   });
 }
 

@@ -125,9 +125,6 @@ const PedidoSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 PedidoSchema.index({ empresaId: 1, id: 1 }, { unique: true });
-// Acelera a ordenação "mais recente primeiro" (GET /pedidos), que sem
-// índice fica mais lenta conforme o histórico de vendas cresce.
-PedidoSchema.index({ empresaId: 1, data: -1 });
 
 // ── CONTADOR — usado para gerar o número sequencial do pedido (por empresa) ──
 // Incrementado de forma atômica (evita números repetidos mesmo com pedidos
