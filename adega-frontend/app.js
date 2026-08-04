@@ -83,18 +83,18 @@ const ENUMS = {
     TAMANHO_OBRIGATORIO: "Selecione um tamanho antes de adicionar ao carrinho.",
   },
   FRASES_CATEGORIAS: {
-    acai: "Qualidade que faz a diferença em cada detalhe.",
-    sorvete: "Escolha perfeita para quem valoriza qualidade.",
-    cafe: "Feito para superar as suas expectativas.",
-    suco: "Um dos favoritos de quem busca excelência.",
-    fruta: " A combinação ideal entre qualidade e praticidade.",
-    verdura: " Um produto pensado para o seu dia a dia.",
-    legume: " Mais qualidade, mais confiança, mais satisfação.",
-    lanche: "Descubra um novo padrão de qualidade.",
-    doce: "Qualidade, cuidado e atenção em cada detalhe.",
-    bebida: "Produzido com dedicação para surpreender você.",
-    complemento:  "Perfeito para tornar qualquer momento ainda melhor.",
-    default: "Uma escolha inteligente para quem busca o melhor.",
+    acai: "🍇 Cremoso, gelado e irresistível!",
+    sorvete: "🍦 Uma colherada de felicidade em cada sabor!",
+    cafe: "☕ O aroma que desperta, o sabor que conquista!",
+    suco: "🍹 Natureza em cada gole!",
+    fruta: "🍎 Da natureza para você — frescor garantido!",
+    verdura: "🥬 Da horta para sua mesa!",
+    legume: "🥕 Cor, sabor e nutrição em cada detalhe!",
+    lanche: "🥪 Rápido, gostoso e feito com carinho!",
+    doce: "🍰 Para adoçar o seu dia!",
+    bebida: "🥤 Refrescante do jeito que você gosta!",
+    complemento: "✨ Personalize do seu jeito!",
+    default: "🌟 Qualidade e sabor em cada detalhe!",
   },
   // ── TAMANHOS DE PRODUTO ─────────────────────────────────────
   // Duas modalidades independentes, que alimentam o mesmo campo
@@ -554,10 +554,7 @@ const WPP = {
       }
     } catch (e) {
       console.error("Erro ao enviar pedido:", e.message);
-      const msg = e.message && e.message !== "Erro na API"
-        ? e.message
-        : "Não foi possível enviar seu pedido. Tente novamente.";
-      MODAL.erro(msg);
+      MODAL.erro("Não foi possível enviar seu pedido. Tente novamente.");
       return;
     }
 
@@ -1006,15 +1003,7 @@ function abrirModalProduto(produtoId) {
           const precoBruto = typeof t === "object" ? (Number(t.preco) || 0) : 0;
           const temPreco   = precoBruto > 0;
           const precoEfetivo = temPreco ? precoBruto : produto.preco;
-          // Bloqueia o tamanho quando o produto tem estoque controlado
-          // (Estoque Total definido, não infinito) e a quantidade desse
-          // tamanho específico chegou a 0. Como o modal é montado a partir
-          // do STATE atual, assim que o admin repõe o estoque do tamanho
-          // a opção volta a aparecer liberada automaticamente.
-          const estoqueTamanho = typeof t === "object" ? Number(t.estoque || 0) : 0;
-          const estoqueControlado = produto.estoque !== "" && produto.estoque !== undefined && produto.estoque !== null;
-          const esgotado = estoqueControlado && estoqueTamanho <= 0;
-          return `<label class="tag-radio${esgotado ? " tag-radio-esgotado" : ""}"><input type="radio" name="pm-tamanho" value="${vol}" data-preco="${precoEfetivo}" onchange="pmAtualizarPreco(this)"${esgotado ? " disabled" : ""}><span>${vol}${temPreco ? " — " + UTIL.formatarMoeda(precoBruto) : ""}${esgotado ? " (Esgotado)" : ""}</span></label>`;
+          return `<label class="tag-radio"><input type="radio" name="pm-tamanho" value="${vol}" data-preco="${precoEfetivo}" onchange="pmAtualizarPreco(this)"><span>${vol}${temPreco ? " — " + UTIL.formatarMoeda(precoBruto) : ""}</span></label>`;
         }).join("")}</div><small class="pm-erro-tamanho" id="pm-erro-tamanho" style="display:none;">Selecione um tamanho para continuar</small></div>` : ""}
         ${complementosDisponiveis.length ? `<div class="pm-secao"><label>Complementos:</label><div class="pm-complementos">${complementosDisponiveis.map(c => `<label class="tag-check"><input type="checkbox" name="pm-comp" value="${c.id}" data-nome="${c.nome}" data-preco="${c.preco || 0}"><span>${c.nome}${c.preco ? ` (+${UTIL.formatarMoeda(c.preco)})` : ""}</span></label>`).join("")}</div></div>` : ""}
         <div class="pm-secao"><label>Observação:</label><textarea id="pm-obs" placeholder="Ex: sem açúcar..." rows="2"></textarea></div>
@@ -2151,10 +2140,7 @@ window._pedAbrirProduto = function(pedidoId, produtoId) {
                 const precoBruto = typeof t === "object" ? (Number(t.preco) || 0) : 0;
                 const temPreco   = precoBruto > 0;
                 const precoEfetivo = temPreco ? precoBruto : produto.preco;
-                const estoqueTamanho = typeof t === "object" ? Number(t.estoque || 0) : 0;
-                const estoqueControlado = produto.estoque !== "" && produto.estoque !== undefined && produto.estoque !== null;
-                const esgotado = estoqueControlado && estoqueTamanho <= 0;
-                return `<label class="tag-radio${esgotado ? " tag-radio-esgotado" : ""}"><input type="radio" name="pm-tamanho" value="${vol}" data-preco="${precoEfetivo}" onchange="pmAtualizarPreco(this)"${esgotado ? " disabled" : ""}><span>${vol}${temPreco ? " — " + UTIL.formatarMoeda(precoBruto) : ""}${esgotado ? " (Esgotado)" : ""}</span></label>`;
+                return `<label class="tag-radio"><input type="radio" name="pm-tamanho" value="${vol}" data-preco="${precoEfetivo}" onchange="pmAtualizarPreco(this)"><span>${vol}${temPreco ? " — " + UTIL.formatarMoeda(precoBruto) : ""}</span></label>`;
               }).join("")}
              </div><small class="pm-erro-tamanho" id="pm-erro-tamanho" style="display:none;">Selecione um tamanho para continuar</small></div>`
           : ""}

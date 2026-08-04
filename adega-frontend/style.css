@@ -205,12 +205,6 @@ h1, h2, h3, h4 { font-family: var(--font-display); }
 }
 .tag-radio:hover span, .tag-check:hover span { border-color: var(--primary); }
 
-.tag-radio-esgotado { cursor: not-allowed; }
-.tag-radio-esgotado span {
-  opacity: .45; text-decoration: line-through; background: var(--surface2);
-}
-.tag-radio-esgotado:hover span { border-color: var(--border); }
-
 /* ============================================================
    ████████╗  PÁGINA CLIENTE — index.html
    ============================================================ */
