@@ -7,7 +7,7 @@ const CONFIG = {
   loja: {
     nome: "Açaí & Cia",
     slogan: "Adega, tabacaria e muito mais!",
-    logo: "🍇",
+    logo: "",
     logoUrl: "",
     banner: "",
     bannerTexto: "Açaí com frutas selecionadas e muito mais!",
