@@ -2685,7 +2685,10 @@ function bindCarrinhoFinalizacao() {
       CARRINHO._atualizarTotais();
     });
   });
-  document.getElementById("btn-finalizar")?.addEventListener("click", async () => {
+  document.getElementById("btn-finalizar")?.addEventListener("click", async (ev) => {
+    const btn = ev.currentTarget;
+    if (btn.disabled) return; // já está processando este clique, ignora repiques
+
     const nome = document.getElementById("cliente-nome")?.value?.trim();
     const tel = document.getElementById("cliente-telefone")?.value?.trim();
     const tipoEntrega = document.querySelector('input[name="tipo-entrega"]:checked')?.value;
@@ -2695,7 +2698,20 @@ function bindCarrinhoFinalizacao() {
       MODAL.erro("Informe o endereço de entrega.");
       return;
     }
-    await WPP.enviar({ nome, telefone: tel }, tipoEntrega, pag, endereco);
+
+    // Trava o botão já no primeiro clique — se o banco demorar pra
+    // responder (comum em plano gratuito) e o cliente clicar de novo
+    // achando que não funcionou, o segundo clique é ignorado e não gera
+    // pedido duplicado. Reabilita ao final, com sucesso ou erro.
+    const textoOriginal = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Enviando pedido...";
+    try {
+      await WPP.enviar({ nome, telefone: tel }, tipoEntrega, pag, endereco);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+    }
   });
 }
 

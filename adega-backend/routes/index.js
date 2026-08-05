@@ -340,6 +340,16 @@ router.get("/pedidos", async (req, res) => {
   catch (e) { err(res, e.message); }
 });
 
+// GET /api/pedidos/contagem — retorna só a QUANTIDADE de pedidos.
+// Usada pelo polling do admin (a cada 12s) para checar se chegou pedido
+// novo sem precisar baixar a lista inteira do histórico toda vez — é uma
+// consulta muito mais leve (countDocuments) e a lista completa só é
+// buscada quando o número realmente muda.
+router.get("/pedidos/contagem", async (req, res) => {
+  try { ok(res, { total: await Pedido.countDocuments({ empresaId: req.empresaId }) }); }
+  catch (e) { err(res, e.message); }
+});
+
 // POST /api/pedidos — cria pedido e desconta estoque automaticamente
 router.post("/pedidos", async (req, res) => {
   try {
@@ -550,6 +560,44 @@ function _converterFatorParaKgOuL(qtd, unidade) {
 }
 
 // ============================================================
+// PERFORMANCE — Carregamento em lote dos documentos necessários
+// para processar os itens de um pedido.
+// ============================================================
+// Antes, cada uma das 3 funções abaixo fazia 1 consulta ao banco POR
+// ITEM (Produto.findOne dentro de um loop) — em um pedido com vários
+// itens/complementos isso virava dezenas de idas e voltas sequenciais
+// ao banco, uma esperando a outra terminar. Em um banco gratuito
+// (latência maior, recursos compartilhados) isso é a causa mais provável
+// de lentidão perceptível ao finalizar pedidos. Agora, buscamos todos os
+// produtos/complementos/estoques-base envolvidos em UMA única consulta
+// cada (usando $in), processamos tudo em memória, e salvamos em paralelo
+// só os documentos realmente modificados.
+// ============================================================
+async function _carregarDocsPedido(empresaId, itens = []) {
+  const produtoIds = [...new Set(itens.map(i => i.produtoId).filter(Boolean))];
+  const complementoIds = [...new Set(itens.flatMap(i => (i.complementos || []).map(c => c.id)).filter(Boolean))];
+
+  const [produtosArr, complementosArr] = await Promise.all([
+    produtoIds.length ? Produto.find({ empresaId, id: { $in: produtoIds } }) : Promise.resolve([]),
+    complementoIds.length ? Complemento.find({ empresaId, id: { $in: complementoIds } }) : Promise.resolve([]),
+  ]);
+
+  const estoqueBaseIds = new Set();
+  produtosArr.forEach(p => { if (p.usaEstoqueBase && p.estoqueBaseId) estoqueBaseIds.add(p.estoqueBaseId); });
+  complementosArr.forEach(c => { if (c.usaEstoqueBase && c.estoqueBaseId) estoqueBaseIds.add(c.estoqueBaseId); });
+
+  const estoquesBaseArr = estoqueBaseIds.size
+    ? await EstoqueBase.find({ empresaId, id: { $in: [...estoqueBaseIds] } })
+    : [];
+
+  return {
+    produtosMap:     new Map(produtosArr.map(p => [p.id, p])),
+    complementosMap: new Map(complementosArr.map(c => [c.id, c])),
+    estoqueBaseMap:  new Map(estoquesBaseArr.map(e => [e.id, e])),
+  };
+}
+
+// ============================================================
 // FUNÇÃO INTERNA — valida se há estoque suficiente ANTES de criar o
 // pedido. Sem essa checagem, era possível vender mais do que o
 // disponível (ex: 3 unidades de um tamanho com só 2 em estoque), o que
@@ -559,9 +607,11 @@ function _converterFatorParaKgOuL(qtd, unidade) {
 // negativo). Retorna uma lista de mensagens de erro (vazia = tudo ok).
 // ============================================================
 async function _validarEstoqueSuficiente(empresaId, itens = []) {
+  if (!itens.length) return [];
+  const { produtosMap } = await _carregarDocsPedido(empresaId, itens);
   const erros = [];
   for (const item of itens) {
-    const prod = await Produto.findOne({ empresaId, id: item.produtoId });
+    const prod = produtosMap.get(item.produtoId);
     if (!prod) continue; // produto removido — deixa passar, tratado em outro lugar
     if (prod.usaEstoqueBase) continue; // mecanismo separado (matéria-prima), não validado aqui
 
@@ -590,9 +640,16 @@ async function _validarEstoqueSuficiente(empresaId, itens = []) {
 // FUNÇÃO INTERNA — desconta estoque ao criar pedido
 // ============================================================
 async function _descontarEstoque(empresaId, itens = []) {
+  if (!itens.length) return;
+  const { produtosMap, complementosMap, estoqueBaseMap } = await _carregarDocsPedido(empresaId, itens);
+  const produtosTocados = new Set();
+  const complementosTocados = new Set();
+  const estoquesBaseTocados = new Set();
+
   for (const item of itens) {
-    const prod = await Produto.findOne({ empresaId, id: item.produtoId });
+    const prod = produtosMap.get(item.produtoId);
     if (!prod) continue;
+    produtosTocados.add(prod);
 
     // Incrementa contador de vendas
     prod.vendas = (prod.vendas || 0) + item.quantidade;
@@ -603,7 +660,7 @@ async function _descontarEstoque(empresaId, itens = []) {
       const unidade = item.unidade || prod.unidade || "";
       const consumoKgL = _converterParaKgOuL(item.quantidade, unidade);
 
-      const eb = await EstoqueBase.findOne({ empresaId, id: prod.estoqueBaseId });
+      const eb = estoqueBaseMap.get(prod.estoqueBaseId);
       if (eb) {
         eb.quantidade = _round3(Math.max(0, eb.quantidade - consumoKgL));
         eb.movimentacoes.push({
@@ -611,7 +668,7 @@ async function _descontarEstoque(empresaId, itens = []) {
           descricao: `Venda: ${item.quantidade}x ${prod.nome} (${unidade})`,
           pedidoId: item.id || "", data: new Date().toISOString()
         });
-        await eb.save();
+        estoquesBaseTocados.add(eb);
       }
     } else if (prod.estoque !== "" && prod.estoque !== undefined && prod.estoque !== null) {
       prod.estoque = Math.max(0, Number(prod.estoque) - item.quantidade);
@@ -637,11 +694,11 @@ async function _descontarEstoque(empresaId, itens = []) {
       prod.ativo = false;
     }
 
-    await prod.save();
-
     for (const comp of (item.complementos || [])) {
-      const c = await Complemento.findOne({ empresaId, id: comp.id });
+      const c = complementosMap.get(comp.id);
       if (!c) continue;
+      complementosTocados.add(c);
+
       // Desconta estoque simples do complemento
       if (c.estoque !== "" && c.estoque !== undefined) {
         c.estoque = Math.max(0, Number(c.estoque) - item.quantidade);
@@ -650,7 +707,7 @@ async function _descontarEstoque(empresaId, itens = []) {
       if (c.usaEstoqueBase && c.estoqueBaseId && c.consumoQtd > 0) {
         const fator = _converterFatorParaKgOuL(c.consumoQtd, c.consumoUnidade || "g");
         const totalConsumo = fator * item.quantidade;
-        const eb = await EstoqueBase.findOne({ empresaId, id: c.estoqueBaseId });
+        const eb = estoqueBaseMap.get(c.estoqueBaseId);
         if (eb) {
           eb.quantidade = _round3(Math.max(0, eb.quantidade - totalConsumo));
           eb.movimentacoes.push({
@@ -658,21 +715,36 @@ async function _descontarEstoque(empresaId, itens = []) {
             descricao: `Complemento: ${item.quantidade}x ${c.nome} (${c.consumoQtd}${c.consumoUnidade})`,
             pedidoId: item.id || "", data: new Date().toISOString()
           });
-          await eb.save();
+          estoquesBaseTocados.add(eb);
         }
       }
-      await c.save();
     }
   }
+
+  // Salva tudo em paralelo (1 viagem "simultânea" por documento, em vez de
+  // 1 viagem sequencial por item) — cada documento é salvo uma única vez,
+  // mesmo que tenha sido tocado por múltiplos itens do mesmo pedido.
+  await Promise.all([
+    ...[...produtosTocados].map(p => p.save()),
+    ...[...complementosTocados].map(c => c.save()),
+    ...[...estoquesBaseTocados].map(e => e.save()),
+  ]);
 }
 
 // ============================================================
 // FUNÇÃO INTERNA — repõe estoque ao cancelar/excluir pedido
 // ============================================================
 async function _reporEstoque(empresaId, itens = []) {
+  if (!itens.length) return;
+  const { produtosMap, complementosMap, estoqueBaseMap } = await _carregarDocsPedido(empresaId, itens);
+  const produtosTocados = new Set();
+  const complementosTocados = new Set();
+  const estoquesBaseTocados = new Set();
+
   for (const item of itens) {
-    const prod = await Produto.findOne({ empresaId, id: item.produtoId });
+    const prod = produtosMap.get(item.produtoId);
     if (!prod) continue;
+    produtosTocados.add(prod);
 
     prod.vendas = Math.max(0, (prod.vendas || 0) - item.quantidade);
 
@@ -680,7 +752,7 @@ async function _reporEstoque(empresaId, itens = []) {
       const unidade = item.unidade || prod.unidade || "";
       const consumoKgL = _converterParaKgOuL(item.quantidade, unidade);
 
-      const eb = await EstoqueBase.findOne({ empresaId, id: prod.estoqueBaseId });
+      const eb = estoqueBaseMap.get(prod.estoqueBaseId);
       if (eb) {
         eb.quantidade = _round3(eb.quantidade + consumoKgL);
         eb.movimentacoes.push({
@@ -688,7 +760,7 @@ async function _reporEstoque(empresaId, itens = []) {
           descricao: `Cancelamento: ${item.quantidade}x ${prod.nome}`,
           pedidoId: item.id || "", data: new Date().toISOString()
         });
-        await eb.save();
+        estoquesBaseTocados.add(eb);
       }
     } else if (prod.estoque !== "" && prod.estoque !== undefined) {
       prod.estoque = Number(prod.estoque) + item.quantidade;
@@ -705,11 +777,12 @@ async function _reporEstoque(empresaId, itens = []) {
         prod.markModified("tamanhos");
       }
     }
-    await prod.save();
 
     for (const comp of (item.complementos || [])) {
-      const c = await Complemento.findOne({ empresaId, id: comp.id });
+      const c = complementosMap.get(comp.id);
       if (!c) continue;
+      complementosTocados.add(c);
+
       if (c.estoque !== "" && c.estoque !== undefined) {
         c.estoque = Number(c.estoque) + item.quantidade;
       }
@@ -717,7 +790,7 @@ async function _reporEstoque(empresaId, itens = []) {
       if (c.usaEstoqueBase && c.estoqueBaseId && c.consumoQtd > 0) {
         const fator = _converterFatorParaKgOuL(c.consumoQtd, c.consumoUnidade || "g");
         const totalConsumo = fator * item.quantidade;
-        const eb = await EstoqueBase.findOne({ empresaId, id: c.estoqueBaseId });
+        const eb = estoqueBaseMap.get(c.estoqueBaseId);
         if (eb) {
           eb.quantidade = _round3(eb.quantidade + totalConsumo);
           eb.movimentacoes.push({
@@ -725,12 +798,17 @@ async function _reporEstoque(empresaId, itens = []) {
             descricao: `Cancelamento complemento: ${item.quantidade}x ${c.nome}`,
             pedidoId: item.id || "", data: new Date().toISOString()
           });
-          await eb.save();
+          estoquesBaseTocados.add(eb);
         }
       }
-      await c.save();
     }
   }
+
+  await Promise.all([
+    ...[...produtosTocados].map(p => p.save()),
+    ...[...complementosTocados].map(c => c.save()),
+    ...[...estoquesBaseTocados].map(e => e.save()),
+  ]);
 }
 
 module.exports = router;

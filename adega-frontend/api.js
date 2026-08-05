@@ -86,6 +86,8 @@ const API_COMPLEMENTOS = {
 
 const API_PEDIDOS = {
   async listar()              { return apiFetch("GET",   "/pedidos"); },
+  // Consulta leve (só a quantidade) usada pelo polling — ver _iniciarPolling
+  async contagem()            { return apiFetch("GET",   "/pedidos/contagem"); },
   async criar(d)              { return apiFetch("POST",  "/pedidos", d); },
   // Pedido público: cliente envia sem precisar de token admin
   async criarPublico(slug,d)  { return apiFetch("POST",  `/pedidos/publico/${slug}`, d, true); },
@@ -251,6 +253,13 @@ function _iniciarPolling() {
 
   _pollingInterval = setInterval(async () => {
     try {
+      // Checagem leve primeiro: só a quantidade de pedidos (1 consulta
+      // rápida de contagem) em vez de baixar o histórico inteiro a cada
+      // 12s — a lista completa só é buscada quando o número muda de fato.
+      const { total } = await API_PEDIDOS.contagem();
+      const atualAntes = STATE.get("pedidos") || [];
+      if (total === atualAntes.length) return; // nada novo, não baixa nada
+
       const pedidos = await API_PEDIDOS.listar();
       const atual   = STATE.get("pedidos") || [];
 
