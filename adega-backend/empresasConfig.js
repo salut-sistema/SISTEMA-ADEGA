@@ -62,7 +62,7 @@ const EMPRESAS = [
     ativo:      true,
     vencimento: null,
     endereco:   "",                          // endereço da empresa
-    slug:       "rhuan-vendedor-Demosntração",          // link exclusivo: /loja/bomboniere-maria
+    slug:       "rhuan-vendedor",          // link exclusivo: /loja/bomboniere-maria
   },
 
   {
