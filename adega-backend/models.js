@@ -31,6 +31,11 @@ const ProdutoSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 ProdutoSchema.index({ empresaId: 1, id: 1 }, { unique: true });
+// Acelera listagens filtradas por "ativo" ordenadas por data de criação
+// (catálogo da loja pública, listas administrativas) — sem isso, o banco
+// tem que examinar TODOS os produtos da empresa pra depois filtrar os
+// ativos e ordenar; com o índice, ele já pega só o que precisa, em ordem.
+ProdutoSchema.index({ empresaId: 1, ativo: 1, dataCriacao: 1 });
 
 // ── ESTOQUE-BASE ─────────────────────────────────────────────
 // Representa o estoque compartilhado por múltiplos produtos (ex: Açaí 20kg)
@@ -66,6 +71,8 @@ const CategoriaSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 CategoriaSchema.index({ empresaId: 1, id: 1 }, { unique: true });
+// Acelera a listagem pública da loja (categorias ativas, em ordem de exibição)
+CategoriaSchema.index({ empresaId: 1, ativo: 1, ordem: 1 });
 
 // ── COMPLEMENTO ───────────────────────────────────────────────
 const ComplementoSchema = new mongoose.Schema({
@@ -83,6 +90,8 @@ const ComplementoSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 ComplementoSchema.index({ empresaId: 1, id: 1 }, { unique: true });
+// Acelera a listagem pública da loja (só complementos ativos)
+ComplementoSchema.index({ empresaId: 1, ativo: 1 });
 
 // ── PEDIDO ────────────────────────────────────────────────────
 const ItemPedidoSchema = new mongoose.Schema({
@@ -109,7 +118,16 @@ const PedidoSchema = new mongoose.Schema({
   total:          Number,
   subtotal:       Number,
   taxaEntrega:    Number,
-  data:           { type: String, default: () => new Date().toISOString() },
+  data:           {
+    // Tipo real Date (antes era String). O Mongoose converte automaticamente
+    // strings ISO ("2025-06-12T14:30:00.000Z") para Date ao salvar — o
+    // frontend já envia data nesse formato, então NENHUMA mudança é
+    // necessária em quem cria pedidos, nem na loja nem no admin.
+    // Documentos antigos (já gravados como string no banco) são
+    // convertidos por uma migração que roda sozinha ao iniciar o servidor
+    // — ver adega-backend/migrations/migrar-data-pedidos.js.
+    type: Date, default: () => new Date(),
+  },
   cliente:        { nome: String, telefone: String },
   itens:          [ItemPedidoSchema],
   // "loja" = pedido feito pelo cliente | "manual" = venda registrada pelo admin (balcão/presencial)
@@ -125,9 +143,12 @@ const PedidoSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 PedidoSchema.index({ empresaId: 1, id: 1 }, { unique: true });
-// Acelera a ordenação "mais recente primeiro" (GET /pedidos), que sem
-// índice fica mais lenta conforme o histórico de vendas cresce.
-PedidoSchema.index({ empresaId: 1, data: -1 });
+// Ordenação "mais recente primeiro" da lista principal (Pedidos Recebidos),
+// já considerando o filtro por excluído que a tela sempre aplica.
+PedidoSchema.index({ empresaId: 1, excluido: 1, data: -1 });
+// Filtro por status (ex: só "pendente") + ordenação por data — usado em
+// telas/relatórios que filtram pedidos por etapa do fluxo.
+PedidoSchema.index({ empresaId: 1, status: 1, data: -1 });
 
 // ── CONTADOR — usado para gerar o número sequencial do pedido (por empresa) ──
 // Incrementado de forma atômica (evita números repetidos mesmo com pedidos

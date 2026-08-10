@@ -461,9 +461,13 @@ router.get("/dashboard", async (req, res) => {
       EstoqueBase.find({ empresaId: req.empresaId }).lean(),
     ]);
 
-    const pedidosDia = pedidos.filter(p => p.data?.startsWith(diaStr));
-    const pedidosMes = pedidos.filter(p => p.data?.startsWith(mesStr));
-    const pedidosAno = pedidos.filter(p => p.data?.startsWith(anoStr));
+    // NOTA: a partir desta etapa, "data" é um Date real (antes era string).
+    // Aqui só convertemos de volta pra string ISO pra manter o filtro
+    // funcionando exatamente como antes — a reescrita deste cálculo pra
+    // rodar direto no banco (aggregation) é a Etapa 4, ainda não esta.
+    const pedidosDia = pedidos.filter(p => p.data && new Date(p.data).toISOString().startsWith(diaStr));
+    const pedidosMes = pedidos.filter(p => p.data && new Date(p.data).toISOString().startsWith(mesStr));
+    const pedidosAno = pedidos.filter(p => p.data && new Date(p.data).toISOString().startsWith(anoStr));
     const soma = arr => arr.reduce((s, p) => s + (p.total || 0), 0);
 
     // Estoque baixo: unidade <= 5 ou base <= 1kg/L

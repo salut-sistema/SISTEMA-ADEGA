@@ -52,9 +52,27 @@ app.get("/", (req, res) => {
 });
 
 // ── Conexão com MongoDB Atlas ─────────────────────────────────
+const { migrarDatasPedidos } = require("./migrations/migrar-data-pedidos");
+const { Pedido } = require("./models");
+
 mongoose.connect(process.env.MONGODB_URI)
-  .then(() => {
+  .then(async () => {
     console.log("✅ MongoDB conectado!");
+
+    // Migração idempotente (ver migrations/migrar-data-pedidos.js): depois
+    // da primeira vez que converte tudo, essa checagem fica praticamente
+    // instantânea nos deploys seguintes. Se falhar por qualquer motivo, o
+    // servidor sobe normalmente mesmo assim (não trava o negócio por causa
+    // de uma migração — só avisa no log pra investigar).
+    try {
+      const resultado = await migrarDatasPedidos(Pedido);
+      if (!resultado.jaEstavaAtualizado) {
+        console.log(`🔄 Migração de datas: ${resultado.migrados} pedido(s) convertido(s) para o novo formato.`);
+      }
+    } catch (e) {
+      console.error("⚠️  Falha ao rodar migração de datas (servidor segue normalmente):", e.message);
+    }
+
     app.listen(PORT, () => {
       console.log(`🚀 Servidor em http://localhost:${PORT}`);
       console.log(`📡 API em http://localhost:${PORT}/api`);
