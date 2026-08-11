@@ -926,12 +926,12 @@ function carregarDadosDemo() {
   if (typeof AUTH !== "undefined") return;
   if (STATE.get("categorias").length > 0) return;
   const cats = [
-    { nome: "Açaí", emoji: "🍇", cor: "#7B2FBE" },
-    { nome: "Sorvete", emoji: "🍦", cor: "#E91E8C" },
-    { nome: "Cafeteria", emoji: "☕", cor: "#6D4C41" },
-    { nome: "Frutas", emoji: "🍎", cor: "#E53935" },
-    { nome: "Sucos", emoji: "🍹", cor: "#FB8C00" },
-    { nome: "Essências", emoji: "💨", cor: "#616b62" },
+    { nome: "Açaí", emoji: "", cor: "#7B2FBE" },
+    { nome: "Sorvete", emoji: "", cor: "#E91E8C" },
+    { nome: "Cafeteria", emoji: "", cor: "#6D4C41" },
+    { nome: "Frutas", emoji: "", cor: "#E53935" },
+    { nome: "Sucos", emoji: "", cor: "#FB8C00" },
+    { nome: "Essências", emoji: "", cor: "#616b62" },
   ];
   cats.forEach(c => CATEGORIAS.criar(c));
   const comps = [
