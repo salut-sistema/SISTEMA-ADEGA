@@ -192,8 +192,7 @@
       if (bt) bt.textContent = CONFIG.loja.bannerTexto || CONFIG.loja.slogan;
 
       const fn = document.getElementById("footer-nome");
-      if (fn) fn.textContent = `${CONFIG.loja.logo} ${CONFIG.loja.nome}`;
-
+      if (fn) fn.textContent = CONFIG.loja.nome;
       const fe = document.getElementById("footer-endereco");
       if (fe) fe.textContent = CONFIG.contato.endereco;
 
