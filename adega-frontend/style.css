@@ -479,25 +479,31 @@ body.loja-carregando > *:not(#loja-loading-overlay) {
   background: var(--surface);
   border-radius: var(--radius-lg);
   max-width: 480px; width: 100%;
-  max-height: 90vh; overflow-y: auto;
+  max-height: 90vh;
+  display: flex; flex-direction: column;
+  overflow: hidden; /* quem rola agora é o .pm-body, não o modal inteiro */
   position: relative;
   box-shadow: var(--shadow);
 }
 .produto-modal-close {
-  position: sticky; top: 16px; left: calc(100% - 50px);
+  position: absolute; top: 16px; right: 16px;
   width: 36px; height: 36px; border-radius: 50%;
-  background: var(--surface2); color: var(--text);
+  background: rgba(0,0,0,0.5); color: #fff;
   display: flex; align-items: center; justify-content: center;
-  font-size: 16px; z-index: 10; margin: 16px 16px 0 auto;
+  font-size: 16px; z-index: 10;
   transition: var(--transition);
 }
 .produto-modal-close:hover { background: var(--danger); }
 
-.pm-img { width: 100%; aspect-ratio: 16/9; background: var(--surface2); display: flex; align-items: center; justify-content: center; border-radius: var(--radius-sm); overflow: hidden; }
+/* Imagem menor e com altura fixa (em vez de 16:9 na largura toda) — ocupa
+   bem menos espaço vertical, sobrando mais tela pra tamanhos e o botão. */
+.pm-img { width: 100%; height: 130px; flex-shrink: 0; background: var(--surface2); display: flex; align-items: center; justify-content: center; border-radius: var(--radius-sm); overflow: hidden; }
 .pm-img img { width: 100%; height: 100%; object-fit: cover; }
 .pm-emoji { font-size: 64px; }
 
-.pm-body { padding: 20px; }
+/* Corpo do modal rola por dentro quando o conteúdo não cabe — a imagem e
+   o botão "Fechar" continuam sempre visíveis, fixos fora dessa área. */
+.pm-body { padding: 20px; padding-bottom: 0; overflow-y: auto; flex: 1; min-height: 0; }
 .pm-body h2 { font-size: 22px; font-weight: 800; margin-bottom: 8px; }
 .pm-desc { color: var(--text-muted); font-size: 14px; margin-bottom: 16px; }
 .pm-preco { font-family: var(--font-display); font-size: 26px; font-weight: 800; color: var(--secondary); margin-bottom: 20px; }
@@ -511,7 +517,15 @@ body.loja-carregando > *:not(#loja-loading-overlay) {
 .pm-erro-tamanho { display: block; margin-top: 8px; color: var(--danger); font-size: 12px; font-weight: 600; }
 .pm-tamanhos-invalido { outline: 2px solid var(--danger); outline-offset: 6px; border-radius: 8px; }
 
-.pm-qtd-row { display: flex; align-items: center; gap: 16px; margin-top: 20px; }
+/* Fixo (sticky) na parte de baixo da área rolável — fica sempre visível
+   sem precisar rolar até o fim, mesmo com bastante conteúdo acima. */
+.pm-qtd-row {
+  display: flex; align-items: center; gap: 16px;
+  position: sticky; bottom: 0;
+  background: var(--surface);
+  margin: 20px -20px 0; padding: 12px 20px 20px;
+  border-top: 1px solid var(--border);
+}
 .pm-qtd {
   display: flex; align-items: center; gap: 0;
   border: 2px solid var(--border); border-radius: 40px;
@@ -1100,6 +1114,8 @@ input[type="color"] {
    RESPONSIVIDADE EXTRA
    ============================================================ */
 @media (max-width: 380px) {
+  .produto-modal { max-height: 94vh; }
+  .pm-img { height: 100px; }
   .pm-qtd-row { flex-direction: column; }
   .pm-add { width: 100%; }
   .dash-card-valor { font-size: 18px; }

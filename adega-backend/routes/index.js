@@ -160,6 +160,14 @@ router.put("/produtos/:id", async (req, res) => {
       { new: true }
     );
     if (!p) return err(res, "Produto não encontrado", 404);
+
+    // Depois de qualquer edição que possa ter mudado o estoque (total ou
+    // por tamanho — ex: reposição manual no Controle de Estoque), verifica
+    // se o produto deve ser pausado/reativado automaticamente. Nunca
+    // sobrescreve uma pausa manual do admin — ver _sincronizarPausaAutomatica.
+    _sincronizarPausaAutomatica(p);
+    await p.save();
+
     ok(res, p);
   } catch (e) { err(res, e.message); }
 });
@@ -178,6 +186,10 @@ router.patch("/produtos/:id/pausar", async (req, res) => {
     const p = await Produto.findOne({ empresaId: req.empresaId, id: req.params.id });
     if (!p) return err(res, "Produto não encontrado", 404);
     p.ativo = !p.ativo;
+    // Ação manual do admin sempre "vence" — zera a marca de pausa
+    // automática, pra essa mudança nunca ser desfeita sozinha depois
+    // (ver _sincronizarPausaAutomatica).
+    p.pausadoAutomaticamente = false;
     await p.save();
     ok(res, p);
   } catch (e) { err(res, e.message); }
@@ -335,9 +347,51 @@ router.patch("/complementos/:id/pausar", async (req, res) => {
 // ============================================================
 
 // GET /api/pedidos — lista pedidos ordenados do mais recente
+// ============================================================
+// GET /api/pedidos — lista pedidos PAGINADA (mais recente primeiro)
+// ============================================================
+// Aceita: page, limit, dataInicio (YYYY-MM-DD), dataFim (YYYY-MM-DD),
+// status, origem, incluirExcluidos ("true"/"false").
+// Responde: { itens, pagina, limite, total, totalPaginas }.
+// Nunca devolve o histórico inteiro de uma vez — limite padrão 30,
+// máximo seguro 200 (mesmo que o cliente peça mais). Essa era a maior
+// causa de lentidão do sistema: antes, essa rota trazia TODOS os
+// pedidos que a empresa já fez, sempre — e só piorava com o tempo.
+const PEDIDOS_LIMITE_PADRAO = 30;
+const PEDIDOS_LIMITE_MAXIMO = 200;
+
 router.get("/pedidos", async (req, res) => {
-  try { ok(res, await Pedido.find({ empresaId: req.empresaId }).sort({ data: -1 }).lean()); }
-  catch (e) { err(res, e.message); }
+  try {
+    const pagina = Math.max(1, parseInt(req.query.page) || 1);
+    const limite = Math.min(PEDIDOS_LIMITE_MAXIMO, Math.max(1, parseInt(req.query.limit) || PEDIDOS_LIMITE_PADRAO));
+
+    const filtro = { empresaId: req.empresaId };
+
+    // Por padrão NÃO inclui excluídos (é o que "Pedidos Recebidos" espera).
+    // "Histórico de Vendas" manda incluirExcluidos=true porque precisa ver
+    // tudo, inclusive excluídos, como trilha de auditoria/controle de fraude.
+    if (req.query.incluirExcluidos !== "true") filtro.excluido = { $ne: true };
+
+    if (req.query.status) filtro.status = req.query.status;
+    if (req.query.origem) filtro.origem = req.query.origem;
+
+    if (req.query.dataInicio || req.query.dataFim) {
+      filtro.data = {};
+      if (req.query.dataInicio) filtro.data.$gte = new Date(`${req.query.dataInicio}T00:00:00.000Z`);
+      if (req.query.dataFim)    filtro.data.$lte = new Date(`${req.query.dataFim}T23:59:59.999Z`);
+    }
+
+    const [itens, total] = await Promise.all([
+      Pedido.find(filtro)
+        .sort({ data: -1 })
+        .skip((pagina - 1) * limite)
+        .limit(limite)
+        .lean(),
+      Pedido.countDocuments(filtro),
+    ]);
+
+    ok(res, { itens, pagina, limite, total, totalPaginas: Math.max(1, Math.ceil(total / limite)) });
+  } catch (e) { err(res, e.message); }
 });
 
 // GET /api/pedidos/contagem — retorna só a QUANTIDADE de pedidos.
@@ -350,6 +404,33 @@ router.get("/pedidos/contagem", async (req, res) => {
   catch (e) { err(res, e.message); }
 });
 
+// GET /api/pedidos/novos?apos=<ISO> — Etapa 5: devolve só os pedidos criados
+// depois do timestamp informado (não-excluídos), junto com os produtos e
+// estoques-base que ELES tocaram (busca só pelos ids envolvidos, não a
+// coleção inteira). Usado pelo polling do admin em vez de re-buscar os
+// 200 pedidos + todo o catálogo a cada novo pedido recebido.
+router.get("/pedidos/novos", async (req, res) => {
+  try {
+    const apos = req.query.apos ? new Date(req.query.apos) : new Date(0);
+    const pedidos = await Pedido.find({ empresaId: req.empresaId, excluido: { $ne: true }, data: { $gt: apos } })
+      .sort({ data: 1 })
+      .limit(50) // segurança — entre um poll e outro não deveria chegar perto disso
+      .lean();
+
+    const produtoIds = [...new Set(pedidos.flatMap(p => (p.itens || []).map(i => i.produtoId).filter(Boolean)))];
+    const produtos = produtoIds.length
+      ? await Produto.find({ empresaId: req.empresaId, id: { $in: produtoIds } }).lean()
+      : [];
+
+    const estoqueBaseIds = [...new Set(produtos.filter(p => p.usaEstoqueBase && p.estoqueBaseId).map(p => p.estoqueBaseId))];
+    const estoquesBase = estoqueBaseIds.length
+      ? await EstoqueBase.find({ empresaId: req.empresaId, id: { $in: estoqueBaseIds } }).lean()
+      : [];
+
+    ok(res, { pedidos, produtos, estoquesBase });
+  } catch (e) { err(res, e.message); }
+});
+
 // POST /api/pedidos — cria pedido e desconta estoque automaticamente
 router.post("/pedidos", async (req, res) => {
   try {
@@ -358,8 +439,11 @@ router.post("/pedidos", async (req, res) => {
 
     const numeroPedido = await proximoNumeroPedido(req.empresaId);
     const pedido = await Pedido.create({ ...req.body, empresaId: req.empresaId, numeroPedido });
-    await _descontarEstoque(req.empresaId, pedido.itens);
-    ok(res, pedido);
+    const afetados = await _descontarEstoque(req.empresaId, pedido.itens);
+    // Etapa 3: devolve o pedido criado junto com o que foi alterado no
+    // estoque — o frontend usa isso pra atualizar a tela sem precisar
+    // baixar produtos/estoque-base inteiros de novo.
+    ok(res, { pedido, ...afetados });
   } catch (e) { err(res, e.message); }
 });
 
@@ -370,7 +454,7 @@ router.put("/pedidos/:id", async (req, res) => {
     if (!pedidoAntigo) return err(res, "Pedido não encontrado", 404);
 
     // Reverte estoque dos itens antigos
-    await _reporEstoque(req.empresaId, pedidoAntigo.itens || []);
+    const afetadosRepor = await _reporEstoque(req.empresaId, pedidoAntigo.itens || []);
 
     // Aplica campos editáveis
     const { itens, total, subtotal, taxaEntrega, status, formaPagamento, endereco } = req.body;
@@ -385,9 +469,12 @@ router.put("/pedidos/:id", async (req, res) => {
     await pedidoAntigo.save();
 
     // Aplica estoque dos novos itens
-    await _descontarEstoque(req.empresaId, pedidoAntigo.itens || []);
+    const afetadosDescontar = await _descontarEstoque(req.empresaId, pedidoAntigo.itens || []);
 
-    ok(res, pedidoAntigo);
+    // Etapa 3: junta o que foi tocado nas duas operações (repor + descontar)
+    // e devolve junto com o pedido — evita o frontend ter que recarregar
+    // produtos/estoque-base inteiros depois de editar um pedido.
+    ok(res, { pedido: pedidoAntigo, ..._mergeAfetados(afetadosRepor, afetadosDescontar) });
   } catch (e) { err(res, e.message); }
 });
 
@@ -414,13 +501,15 @@ router.delete("/pedidos/:id", async (req, res) => {
     if (pedido.excluido) return err(res, "Pedido já estava excluído", 400);
 
     // Repõe o estoque ao cancelar/excluir pedido
-    await _reporEstoque(req.empresaId, pedido.itens);
+    const afetados = await _reporEstoque(req.empresaId, pedido.itens);
 
     pedido.excluido = true;
     pedido.dataExclusao = new Date().toISOString();
     await pedido.save();
 
-    ok(res, pedido);
+    // Etapa 3: devolve junto o que foi reposto no estoque, pra "Pedidos
+    // Recebidos" não precisar recarregar produtos/estoque-base inteiros.
+    ok(res, { pedido, ...afetados });
   } catch (e) { err(res, e.message); }
 });
 
@@ -450,25 +539,48 @@ router.post("/config", async (req, res) => {
 // ============================================================
 router.get("/dashboard", async (req, res) => {
   try {
-    const agora  = new Date();
-    const diaStr = agora.toISOString().split("T")[0];   // "2025-06-12"
-    const mesStr = diaStr.substring(0, 7);               // "2025-06"
-    const anoStr = diaStr.substring(0, 4);               // "2025"
+    const agora = new Date();
 
-    const [pedidos, produtos, estoquesBases] = await Promise.all([
-      Pedido.find({ empresaId: req.empresaId, excluido: { $ne: true } }).lean(),
+    // Limites de dia/mês/ano em UTC — equivalente a comparar o prefixo da
+    // string ISO como era feito antes (ex: "2025-06-12"), só que sem
+    // precisar converter cada pedido de volta pra string.
+    const inicioDia  = new Date(Date.UTC(agora.getUTCFullYear(), agora.getUTCMonth(), agora.getUTCDate()));
+    const inicioMes  = new Date(Date.UTC(agora.getUTCFullYear(), agora.getUTCMonth(), 1));
+    const inicioAno  = new Date(Date.UTC(agora.getUTCFullYear(), 0, 1));
+    const fimDia  = new Date(inicioDia.getTime() + 24 * 60 * 60 * 1000);
+    const fimMes  = new Date(Date.UTC(agora.getUTCFullYear(), agora.getUTCMonth() + 1, 1));
+    const fimAno  = new Date(Date.UTC(agora.getUTCFullYear() + 1, 0, 1));
+
+    // Etapa 4: em vez de trazer TODOS os pedidos da empresa pra memória só
+    // pra somar/contar por período, deixa o próprio MongoDB fazer essa
+    // conta (aggregation) — o servidor recebe só os 6 números já prontos,
+    // não importa se a empresa tem 100 ou 100 mil pedidos no histórico.
+    const _faixa = (inicio, fim) => ({ $and: [{ $gte: ["$data", inicio] }, { $lt: ["$data", fim] }] });
+
+    const [agregado, produtos, estoquesBases] = await Promise.all([
+      Pedido.aggregate([
+        { $match: { empresaId: req.empresaId, excluido: { $ne: true } } },
+        { $group: {
+            _id: null,
+            totalPedidos:      { $sum: 1 },
+            faturamentoDia:    { $sum: { $cond: [_faixa(inicioDia, fimDia), "$total", 0] } },
+            pedidosDia:        { $sum: { $cond: [_faixa(inicioDia, fimDia), 1, 0] } },
+            faturamentoMes:    { $sum: { $cond: [_faixa(inicioMes, fimMes), "$total", 0] } },
+            pedidosMes:        { $sum: { $cond: [_faixa(inicioMes, fimMes), 1, 0] } },
+            faturamentoAno:    { $sum: { $cond: [_faixa(inicioAno, fimAno), "$total", 0] } },
+            pedidosAno:        { $sum: { $cond: [_faixa(inicioAno, fimAno), 1, 0] } },
+        } },
+      ]),
       Produto.find({ empresaId: req.empresaId }).lean(),
       EstoqueBase.find({ empresaId: req.empresaId }).lean(),
     ]);
 
-    // NOTA: a partir desta etapa, "data" é um Date real (antes era string).
-    // Aqui só convertemos de volta pra string ISO pra manter o filtro
-    // funcionando exatamente como antes — a reescrita deste cálculo pra
-    // rodar direto no banco (aggregation) é a Etapa 4, ainda não esta.
-    const pedidosDia = pedidos.filter(p => p.data && new Date(p.data).toISOString().startsWith(diaStr));
-    const pedidosMes = pedidos.filter(p => p.data && new Date(p.data).toISOString().startsWith(mesStr));
-    const pedidosAno = pedidos.filter(p => p.data && new Date(p.data).toISOString().startsWith(anoStr));
-    const soma = arr => arr.reduce((s, p) => s + (p.total || 0), 0);
+    // Empresa sem nenhum pedido ainda → aggregation não devolve documento,
+    // usamos zeros pra tudo (mesmo comportamento de antes).
+    const stats = agregado[0] || {
+      totalPedidos: 0, faturamentoDia: 0, pedidosDia: 0,
+      faturamentoMes: 0, pedidosMes: 0, faturamentoAno: 0, pedidosAno: 0,
+    };
 
     // Estoque baixo: unidade <= 5 ou base <= 1kg/L
     const estoqueBaixo = produtos.filter(p =>
@@ -495,8 +607,8 @@ router.get("/dashboard", async (req, res) => {
       .map(p => ({ id: p.id, nome: p.nome, vendas: p.vendas }));
 
     ok(res, {
-      faturamento: { dia: soma(pedidosDia), mes: soma(pedidosMes), ano: soma(pedidosAno) },
-      pedidos:     { dia: pedidosDia.length, mes: pedidosMes.length, ano: pedidosAno.length, total: pedidos.length },
+      faturamento: { dia: stats.faturamentoDia, mes: stats.faturamentoMes, ano: stats.faturamentoAno },
+      pedidos:     { dia: stats.pedidosDia, mes: stats.pedidosMes, ano: stats.pedidosAno, total: stats.totalPedidos },
       estoqueBaixo,
       estoqueBaixoBase,
       validadeProxima,
@@ -643,6 +755,43 @@ async function _validarEstoqueSuficiente(empresaId, itens = []) {
 // ============================================================
 // FUNÇÃO INTERNA — desconta estoque ao criar pedido
 // ============================================================
+// ============================================================
+// Estoque zerado → pausa automática (integrada com pausa manual)
+// ============================================================
+// Um produto é considerado "esgotado" quando:
+//  - tem tamanhos cadastrados: TODOS os tamanhos estão com estoque <= 0;
+//  - não tem tamanhos: o Estoque Total é controlado (não infinito) e
+//    chegou a 0.
+// Produtos com Estoque-Base (matéria-prima compartilhada) ficam de fora
+// — esse mecanismo é outro e não muda o "ativo" do produto.
+function _produtoEstaEsgotado(prod) {
+  if (prod.usaEstoqueBase) return false;
+  if (Array.isArray(prod.tamanhos) && prod.tamanhos.length > 0) {
+    return prod.tamanhos.every(t => Number(t.estoque || 0) <= 0);
+  }
+  const estoqueFinito = prod.estoque !== "" && prod.estoque !== null && prod.estoque !== undefined;
+  if (!estoqueFinito) return false; // estoque ilimitado nunca esgota
+  return Number(prod.estoque) <= 0;
+}
+
+// Chamada sempre que o estoque de um produto muda (venda, cancelamento,
+// edição manual do estoque). Pausa sozinho quando esgota, reativa sozinho
+// quando volta a ter estoque — mas SÓ reativa se foi o próprio sistema
+// quem pausou (pausadoAutomaticamente:true). Uma pausa feita manualmente
+// pelo admin (botão "Pausar") nunca é desfeita por aqui; só o admin
+// reativa clicando de novo.
+function _sincronizarPausaAutomatica(prod) {
+  if (prod.usaEstoqueBase) return;
+  const esgotado = _produtoEstaEsgotado(prod);
+  if (esgotado && prod.ativo) {
+    prod.ativo = false;
+    prod.pausadoAutomaticamente = true;
+  } else if (!esgotado && !prod.ativo && prod.pausadoAutomaticamente) {
+    prod.ativo = true;
+    prod.pausadoAutomaticamente = false;
+  }
+}
+
 async function _descontarEstoque(empresaId, itens = []) {
   if (!itens.length) return;
   const { produtosMap, complementosMap, estoqueBaseMap } = await _carregarDocsPedido(empresaId, itens);
@@ -692,11 +841,9 @@ async function _descontarEstoque(empresaId, itens = []) {
       }
     }
 
-    // Pausa automática se estoque zerou (ignora estoque vazio = infinito)
-    const estoqueFinito = prod.estoque !== "" && prod.estoque !== null && prod.estoque !== undefined;
-    if (!prod.usaEstoqueBase && estoqueFinito && Number(prod.estoque) <= 0 && prod.ativo) {
-      prod.ativo = false;
-    }
+    // Pausa automática se o produto esgotou (considera tamanhos e estoque
+    // total, e nunca sobrescreve uma pausa manual) — ver _sincronizarPausaAutomatica.
+    _sincronizarPausaAutomatica(prod);
 
     for (const comp of (item.complementos || [])) {
       const c = complementosMap.get(comp.id);
@@ -725,19 +872,45 @@ async function _descontarEstoque(empresaId, itens = []) {
     }
   }
 
-  // Salva tudo em paralelo (1 viagem "simultânea" por documento, em vez de
-  // 1 viagem sequencial por item) — cada documento é salvo uma única vez,
-  // mesmo que tenha sido tocado por múltiplos itens do mesmo pedido.
   await Promise.all([
     ...[...produtosTocados].map(p => p.save()),
     ...[...complementosTocados].map(c => c.save()),
     ...[...estoquesBaseTocados].map(e => e.save()),
   ]);
+
+  // Etapa 3: devolve os documentos alterados (em vez de nada) pra quem
+  // chamou essa função poder incluir na resposta da API — assim o
+  // frontend consegue atualizar só o que mudou, sem baixar produtos e
+  // estoque-base inteiros de novo a cada venda.
+  return {
+    produtos:     [...produtosTocados].map(p => p.toObject()),
+    complementos: [...complementosTocados].map(c => c.toObject()),
+    estoquesBase: [...estoquesBaseTocados].map(e => e.toObject()),
+  };
 }
 
 // ============================================================
 // FUNÇÃO INTERNA — repõe estoque ao cancelar/excluir pedido
 // ============================================================
+// ============================================================
+// FUNÇÃO INTERNA — junta dois resultados de {produtos,complementos,
+// estoquesBase} por id, mantendo sempre a versão mais recente (a "b",
+// vinda da segunda chamada). Usado na edição de pedido, que primeiro
+// repõe o estoque dos itens antigos e depois desconta o dos novos.
+// ============================================================
+function _mergeAfetados(a, b) {
+  const juntar = (lista1 = [], lista2 = []) => {
+    const porId = new Map(lista1.map(x => [x.id, x]));
+    lista2.forEach(x => porId.set(x.id, x));
+    return [...porId.values()];
+  };
+  return {
+    produtos:     juntar(a?.produtos, b?.produtos),
+    complementos: juntar(a?.complementos, b?.complementos),
+    estoquesBase: juntar(a?.estoquesBase, b?.estoquesBase),
+  };
+}
+
 async function _reporEstoque(empresaId, itens = []) {
   if (!itens.length) return;
   const { produtosMap, complementosMap, estoqueBaseMap } = await _carregarDocsPedido(empresaId, itens);
@@ -768,8 +941,6 @@ async function _reporEstoque(empresaId, itens = []) {
       }
     } else if (prod.estoque !== "" && prod.estoque !== undefined) {
       prod.estoque = Number(prod.estoque) + item.quantidade;
-      // Reativa produto se tinha sido pausado por falta de estoque
-      if (!prod.ativo && prod.estoque > 0) prod.ativo = true;
     }
 
     // ── Estoque por Tamanho — repõe a quantidade do tamanho cancelado,
@@ -781,6 +952,10 @@ async function _reporEstoque(empresaId, itens = []) {
         prod.markModified("tamanhos");
       }
     }
+
+    // Reativa automaticamente se o estoque voltou (só quando a pausa
+    // atual foi automática — nunca sobrescreve uma pausa manual do admin).
+    _sincronizarPausaAutomatica(prod);
 
     for (const comp of (item.complementos || [])) {
       const c = complementosMap.get(comp.id);
@@ -813,6 +988,12 @@ async function _reporEstoque(empresaId, itens = []) {
     ...[...complementosTocados].map(c => c.save()),
     ...[...estoquesBaseTocados].map(e => e.save()),
   ]);
+
+  return {
+    produtos:     [...produtosTocados].map(p => p.toObject()),
+    complementos: [...complementosTocados].map(c => c.toObject()),
+    estoquesBase: [...estoquesBaseTocados].map(e => e.toObject()),
+  };
 }
 
 module.exports = router;

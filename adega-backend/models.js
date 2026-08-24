@@ -24,6 +24,10 @@ const ProdutoSchema = new mongoose.Schema({
   complementosVinculados: [String],
   dataCriacao:            { type: String, default: () => new Date().toISOString() },
   vendas:                 { type: Number, default: 0 },
+  // true = o "ativo:false" atual foi setado pelo SISTEMA (estoque zerou),
+  // não pelo admin. Usado pra reativação automática nunca sobrescrever
+  // uma pausa manual — ver _sincronizarPausaAutomatica().
+  pausadoAutomaticamente: { type: Boolean, default: false },
   // ── Estoque-Base (produtos por peso) ──────────────────────
   usaEstoqueBase:         { type: Boolean, default: false },       // true = produto por peso
   estoqueBaseId:          { type: String, default: "" },           // ID do EstoqueBase vinculado

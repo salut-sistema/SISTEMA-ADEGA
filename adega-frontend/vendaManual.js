@@ -112,24 +112,22 @@ const VENDA_MANUAL = {
       total:        subtotal + taxa,
       data:         new Date().toISOString(),
       cliente:      { nome, telefone },
-      itens:        [...carrinho],
+      itens:        _itensParaEnvio(carrinho),
       origem:       "manual", // identifica venda registrada pelo admin (balcão)
     };
 
     try {
       // Mesma API autenticada já usada pelo restante do painel (api.js).
-      // O backend já desconta estoque e soma vendas (routes/index.js).
-      await API_PEDIDOS.criar(pedido);
+      // O backend já desconta estoque e soma vendas (routes/index.js) e
+      // devolve, junto com o pedido criado, tudo que foi alterado no
+      // estoque — não precisamos mais recarregar pedidos/produtos/
+      // estoque-base inteiros a cada venda (Etapa 3).
+      const resposta = await API_PEDIDOS.criar(pedido);
 
-      // Recarrega os dados do backend — mesmo padrão já usado no polling (api.js)
-      const [pedidos, produtos, estoquesBases] = await Promise.all([
-        API_PEDIDOS.listar(),
-        API_PRODUTOS.listar(),
-        API_ESTOQUE_BASE.listar(),
-      ]);
-      STATE.set("pedidos", pedidos || []);
-      STATE.set("produtos", produtos || []);
-      STATE.set("estoquesBases", estoquesBases || []);
+      STATE.update("pedidos", lista => [resposta.pedido, ...(lista || [])]);
+      STATE.update("produtos", lista => patchPorId(lista, resposta.produtos));
+      STATE.update("complementos", lista => patchPorId(lista, resposta.complementos));
+      STATE.update("estoquesBases", lista => patchPorId(lista, resposta.estoquesBase));
 
       // Atualiza as telas já existentes — nenhuma renderização nova é criada.
       if (typeof renderizarAdmin === "function") renderizarAdmin();           // Dashboard/Faturamento

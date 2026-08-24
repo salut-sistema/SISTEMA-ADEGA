@@ -110,6 +110,18 @@ ENUMS.TAMANHOS_TODOS = [...ENUMS.TAMANHOS_VOLUME, ...ENUMS.TAMANHOS_UNIDADE];
 // ============================================================
 // ESTADO CENTRALIZADO COM SISTEMA REATIVO
 // ============================================================
+// ============================================================
+// Aplica documentos alterados (por id) numa lista existente, sem
+// mexer no resto — usada depois de criar/editar/excluir pedido pra
+// atualizar produtos/complementos/estoque-base sem baixar tudo de
+// novo do servidor (Etapa 3).
+// ============================================================
+function patchPorId(lista, alterados) {
+  if (!alterados || !alterados.length) return lista;
+  const porId = new Map(alterados.map(a => [a.id, a]));
+  return (lista || []).map(item => porId.get(item.id) || item);
+}
+
 const STATE = {
   _data: {
     carrinho: [],
@@ -150,6 +162,35 @@ const STATE = {
 };
 
 // ============================================================
+// Chave de armazenamento do carrinho — isolada por loja/slug.
+//
+// BUG CORRIGIDO: antes, o carrinho usava uma chave fixa no localStorage
+// ("sdv_carrinho"), que é compartilhado entre TODOS os links do mesmo
+// domínio. Resultado: um produto deixado no carrinho da loja A aparecia
+// (e era cobrado) na loja B ao trocar de link, mesmo sendo empresas
+// diferentes e sem nenhum vínculo entre si.
+//
+// Agora cada loja pública tem sua própria chave (ex: "sdv_carrinho_pizzaria",
+// "sdv_carrinho_boutique-da-ana"), calculada direto pela URL — não depende
+// de nenhuma variável já ter sido setada por outro arquivo, então funciona
+// não importa a ordem de carregamento dos scripts.
+// ============================================================
+function _chaveCarrinhoAtual() {
+  const isAdmin = document.body?.classList.contains("pagina-admin");
+  if (isAdmin) {
+    // Painel Admin (Venda Manual reaproveita o mesmo carrinho/CARRINHO) —
+    // isola por empresa logada, pra dois admins de empresas diferentes no
+    // mesmo navegador também não compartilharem carrinho entre si.
+    const slugAdmin = (typeof AUTH !== "undefined" && AUTH.slug && AUTH.slug()) || "sem-sessao";
+    return `sdv_carrinho_admin_${slugAdmin}`;
+  }
+  const match  = window.location.pathname.match(/\/loja\/([^/?#]+)/);
+  const params = new URLSearchParams(window.location.search);
+  const slug   = window.LOJA_SLUG || match?.[1] || params.get("slug");
+  return slug ? `sdv_carrinho_${slug}` : "sdv_carrinho_sem_loja";
+}
+
+// ============================================================
 // STORAGE
 // ============================================================
 const STORAGE = {
@@ -159,7 +200,6 @@ const STORAGE = {
     COMPLEMENTOS: "sdv_complementos",
     PEDIDOS: "sdv_pedidos",
     CONFIG: "sdv_config",
-    CARRINHO: "sdv_carrinho",
   },
   get(key) {
     try { return JSON.parse(localStorage.getItem(key)) || null; } catch { return null; }
@@ -172,7 +212,7 @@ const STORAGE = {
     STATE.set("categorias", this.get(this.KEYS.CATEGORIAS) || []);
     STATE.set("complementos", this.get(this.KEYS.COMPLEMENTOS) || []);
     STATE.set("pedidos", this.get(this.KEYS.PEDIDOS) || []);
-    STATE.set("carrinho", this.get(this.KEYS.CARRINHO) || []);
+    STATE.set("carrinho", this.get(_chaveCarrinhoAtual()) || []);
     const cfgSalva = this.get(this.KEYS.CONFIG);
     if (cfgSalva) {
       CONFIG.loja = { ...CONFIG.loja, ...cfgSalva.loja };
@@ -186,7 +226,7 @@ const STORAGE = {
   salvarCategorias() { this.set(this.KEYS.CATEGORIAS, STATE.get("categorias")); },
   salvarComplementos() { this.set(this.KEYS.COMPLEMENTOS, STATE.get("complementos")); },
   salvarPedidos() { this.set(this.KEYS.PEDIDOS, STATE.get("pedidos")); },
-  salvarCarrinho() { this.set(this.KEYS.CARRINHO, STATE.get("carrinho")); },
+  salvarCarrinho() { this.set(_chaveCarrinhoAtual(), STATE.get("carrinho")); },
   salvarConfig() {
     this.set(this.KEYS.CONFIG, {
       loja: CONFIG.loja, contato: CONFIG.contato,
@@ -399,6 +439,28 @@ const TABS = {
 };
 
 // ============================================================
+// Remove o campo "imagem" (base64, pode ser pesado — até 1-2MB por
+// produto) dos itens antes de enviar o pedido ao servidor.
+//
+// BUG CORRIGIDO: cada item do carrinho carrega a imagem do produto só
+// pra mostrar a miniatura na tela do carrinho (CARRINHO.atualizarUI).
+// Mas o pedido inteiro (itens: [...carrinho]) estava sendo enviado e
+// salvo assim mesmo, com a imagem de CADA item embutida dentro do
+// pedido. Em pedidos com muitos itens diferentes, isso inflava o
+// tamanho da requisição e podia passar do limite do servidor (10mb),
+// fazendo o pedido falhar com uma mensagem de "servidor indisponível"
+// — mesmo com a internet e o servidor funcionando normalmente.
+//
+// A imagem não faz falta nenhuma no pedido salvo: nenhuma tela do
+// sistema (Pedidos Recebidos, Histórico, comprovante) usa item.imagem
+// depois que o pedido já foi criado — só a tela do carrinho, que lê
+// direto de STATE.carrinho (não do pedido salvo).
+// ============================================================
+function _itensParaEnvio(carrinho) {
+  return (carrinho || []).map(({ imagem, ...resto }) => resto);
+}
+
+// ============================================================
 // CARRINHO
 // ============================================================
 const CARRINHO = {
@@ -531,7 +593,7 @@ const WPP = {
       id: UTIL.id(),
       data: new Date().toISOString(),
       cliente,
-      itens: [...carrinho],
+      itens: _itensParaEnvio(carrinho),
       tipoEntrega,
       formaPagamento,
       endereco,
@@ -926,12 +988,12 @@ function carregarDadosDemo() {
   if (typeof AUTH !== "undefined") return;
   if (STATE.get("categorias").length > 0) return;
   const cats = [
-    { nome: "Açaí", emoji: "", cor: "#7B2FBE" },
-    { nome: "Sorvete", emoji: "", cor: "#E91E8C" },
-    { nome: "Cafeteria", emoji: "", cor: "#6D4C41" },
-    { nome: "Frutas", emoji: "", cor: "#E53935" },
-    { nome: "Sucos", emoji: "", cor: "#FB8C00" },
-    { nome: "Essências", emoji: "", cor: "#616b62" },
+    { nome: "Açaí", emoji: "🍇", cor: "#7B2FBE" },
+    { nome: "Sorvete", emoji: "🍦", cor: "#E91E8C" },
+    { nome: "Cafeteria", emoji: "☕", cor: "#6D4C41" },
+    { nome: "Frutas", emoji: "🍎", cor: "#E53935" },
+    { nome: "Sucos", emoji: "🍹", cor: "#FB8C00" },
+    { nome: "Essências", emoji: "💨", cor: "#616b62" },
   ];
   cats.forEach(c => CATEGORIAS.criar(c));
   const comps = [
@@ -1210,9 +1272,10 @@ function aplicarConfigUI() {
       const img = document.createElement("img");
       img.src = CONFIG.loja.logoUrl; img.alt = "Logo";
       logo.appendChild(img);
-    } else {
-      logo.textContent = CONFIG.loja.logo;
     }
+    // Sem imagem enviada: não mostra nenhum emoji/ícone de fallback — só o
+    // nome da loja (ver #loja-nome logo abaixo). Antes caía aqui um emoji
+    // fixo (ex: 🍇) que não fazia sentido pra lojas de outros nichos.
   }
   document.title = CONFIG.loja.nome;
   const wppFloat = document.getElementById("wpp-float");
@@ -2002,19 +2065,17 @@ function confirmarExcluirPedido(id) {
   MODAL.pedirSenha("Excluir Pedido", () => {
     MODAL.confirmar("Excluir este pedido? O estoque será revertido automaticamente e o faturamento será atualizado.", async () => {
       try {
-        const pedidoExcluido = await API_PEDIDOS.excluir(id);
+        const resposta = await API_PEDIDOS.excluir(id);
         // Não remove o pedido do estado: apenas atualiza (excluido:true), pois
         // o registro deve continuar existindo no "Histórico de Vendas" como
         // trilha de auditoria. Ele só some da lista de "Pedidos Recebidos"
         // (renderizarAdmPedidos já filtra os que têm excluido:true).
-        STATE.update("pedidos", lista => lista.map(p => p.id === id ? { ...p, ...pedidoExcluido } : p));
-        // Recarrega produtos para refletir estorno de estoque e vendas
-        const [produtosAtualizados, estoquesBases] = await Promise.all([
-          API_PRODUTOS.listar(),
-          API_ESTOQUE_BASE.listar(),
-        ]);
-        STATE.set("produtos", produtosAtualizados || []);
-        STATE.set("estoquesBases", estoquesBases || []);
+        STATE.update("pedidos", lista => lista.map(p => p.id === id ? { ...p, ...resposta.pedido } : p));
+        // Etapa 3: a API já devolve os produtos/estoque-base que o
+        // estorno alterou — só aplica, sem recarregar tudo de novo.
+        STATE.update("produtos", lista => patchPorId(lista, resposta.produtos));
+        STATE.update("complementos", lista => patchPorId(lista, resposta.complementos));
+        STATE.update("estoquesBases", lista => patchPorId(lista, resposta.estoquesBase));
         renderizarAdmPedidos();
         renderizarAdmProdutos();
         renderizarControleEstoque();
@@ -2222,7 +2283,6 @@ window._pedConfirmarProduto = function(pedidoId, produtoId) {
       preco: precoComComps,
       quantidade: qtd,
       unidade: unidade,
-      imagem: produto.imagem || "",
       tamanho: tamanho,
       complementos: comps,
       observacao: obs,
@@ -2247,22 +2307,20 @@ async function salvarEdicaoPedido(id) {
   const total = subtotal + taxa;
 
   try {
-    const pedidoAtualizado = await API_PEDIDOS.editar(id, {
+    const resposta = await API_PEDIDOS.editar(id, {
       itens, total, subtotal, taxaEntrega: taxa, status, formaPagamento, endereco,
     });
 
     // Atualiza estado local com todos os dados retornados do backend
     STATE.update("pedidos", lista =>
-      lista.map(p => p.id === id ? { ...p, ...pedidoAtualizado, itens, total, subtotal, status, formaPagamento, endereco } : p)
+      lista.map(p => p.id === id ? { ...p, ...resposta.pedido, itens, total, subtotal, status, formaPagamento, endereco } : p)
     );
 
-    // Recarrega produtos do backend para refletir novos estoques e vendas
-    const [produtosAtualizados, estoquesBases] = await Promise.all([
-      API_PRODUTOS.listar(),
-      API_ESTOQUE_BASE.listar(),
-    ]);
-    STATE.set("produtos", produtosAtualizados || []);
-    STATE.set("estoquesBases", estoquesBases || []);
+    // Etapa 3: a API já devolve os produtos/estoque-base afetados pela
+    // reconciliação de estoque — só aplica, sem recarregar tudo de novo.
+    STATE.update("produtos", lista => patchPorId(lista, resposta.produtos));
+    STATE.update("complementos", lista => patchPorId(lista, resposta.complementos));
+    STATE.update("estoquesBases", lista => patchPorId(lista, resposta.estoquesBase));
 
     MODAL.fechar();
     renderizarAdmPedidos();
@@ -2720,8 +2778,10 @@ function bindCarrinhoFinalizacao() {
 // INIT
 // ============================================================
 document.addEventListener("DOMContentLoaded", () => {
-  // Carrinho ainda usa localStorage (não precisa de autenticação)
-  STATE.set("carrinho", STORAGE.get(STORAGE.KEYS.CARRINHO) || []);
+  // Carrinho ainda usa localStorage (não precisa de autenticação) — chave
+  // isolada por loja/slug, ver _chaveCarrinhoAtual() (corrige carrinho
+  // vazando entre lojas diferentes).
+  STATE.set("carrinho", STORAGE.get(_chaveCarrinhoAtual()) || []);
   // Dados de produtos/categorias/pedidos vêm do MongoDB via api.js
   // carregarDadosDemo só roda se api.js não estiver presente
   carregarDadosDemo();
@@ -2835,7 +2895,6 @@ async function pmAdicionarAoPedido(produtoId) {
       preco: precoComComps,
       quantidade: qtd,
       unidade: unidade,
-      imagem: produto.imagem || "",
       tamanho: tamanho,
       complementos: comps,
       observacao: obs,
@@ -2847,23 +2906,23 @@ async function pmAdicionarAoPedido(produtoId) {
   const total    = subtotal + taxa;
 
   try {
-    const pedidoAtualizado = await API_PEDIDOS.editar(pedidoId, {
+    const resposta = await API_PEDIDOS.editar(pedidoId, {
       itens: itensAtuais, total, subtotal, taxaEntrega: taxa,
       status: pedido.status, formaPagamento: pedido.formaPagamento, endereco: pedido.endereco,
     });
 
     STATE.update("pedidos", lista =>
       lista.map(p => p.id === pedidoId
-        ? { ...p, ...pedidoAtualizado, itens: itensAtuais, total, subtotal }
+        ? { ...p, ...resposta.pedido, itens: itensAtuais, total, subtotal }
         : p)
     );
 
-    const [produtosAtualizados, estoquesBases] = await Promise.all([
-      API_PRODUTOS.listar(),
-      API_ESTOQUE_BASE.listar(),
-    ]);
-    STATE.set("produtos", produtosAtualizados);
-    STATE.set("estoques_base", estoquesBases);
+    // Etapa 3: usa o que a API já devolveu em vez de recarregar produtos/
+    // estoque-base inteiros (e corrige a chave "estoques_base", que estava
+    // errada aqui — o resto do app usa "estoquesBases").
+    STATE.update("produtos", lista => patchPorId(lista, resposta.produtos));
+    STATE.update("complementos", lista => patchPorId(lista, resposta.complementos));
+    STATE.update("estoquesBases", lista => patchPorId(lista, resposta.estoquesBase));
 
     renderizarAdmProdutos?.();
     renderizarAdmPedidos?.();

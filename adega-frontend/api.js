@@ -49,10 +49,40 @@ async function apiFetch(method, endpoint, body = null, publico = false) {
   if (!publico && AUTH.logado()) headers["X-Empresa-Token"] = AUTH.token();
   const opts = { method, headers };
   if (body) opts.body = JSON.stringify(body);
-  const res  = await fetch(`${API_BASE}${endpoint}`, opts);
-  const json = await res.json();
+
+  let res;
+  try {
+    res = await fetch(`${API_BASE}${endpoint}`, opts);
+  } catch (e) {
+    // A requisição nem chegou a sair — sem internet, ou o servidor está
+    // completamente fora do ar (não é um erro de "conteúdo", é de rede).
+    throw new Error("Não foi possível conectar ao servidor. Verifique sua internet e tente novamente em alguns instantes.");
+  }
+
+  const texto = await res.text();
+  let json;
+  try {
+    json = JSON.parse(texto);
+  } catch (e) {
+    // O servidor respondeu, mas a resposta não é JSON — normalmente é uma
+    // página de erro em HTML (ex: "502 Bad Gateway"), o que costuma
+    // acontecer quando o backend está dormindo/reiniciando (planos free
+    // do Render "dormem" depois de um tempo sem uso e demoram pra
+    // acordar). Sem esse tratamento, o app tentava ler essa página HTML
+    // como se fosse JSON e mostrava um erro técnico confuso pro usuário.
+    throw new Error("O servidor está indisponível ou reiniciando no momento (isso é comum logo após um período sem uso). Aguarde alguns segundos e tente novamente.");
+  }
+
   if (!json.sucesso) throw new Error(json.erro || "Erro na API");
   return json.data;
+}
+
+// Monta querystring a partir de um objeto, ignorando valores vazios/undefined
+function _qs(params = {}) {
+  const partes = Object.entries(params)
+    .filter(([, v]) => v !== undefined && v !== null && v !== "")
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`);
+  return partes.length ? `?${partes.join("&")}` : "";
 }
 
 // ── APIs disponíveis ─────────────────────────────────────────
@@ -85,9 +115,15 @@ const API_COMPLEMENTOS = {
 };
 
 const API_PEDIDOS = {
-  async listar()              { return apiFetch("GET",   "/pedidos"); },
+  // filtros: { page, limit, dataInicio, dataFim, status, origem, incluirExcluidos }
+  // Retorna { itens, pagina, limite, total, totalPaginas } — NÃO é mais
+  // um array direto, ver quem consome isso (renderizarAdmPedidos, HISTORICO).
+  async listar(filtros = {})  { return apiFetch("GET",   `/pedidos${_qs(filtros)}`); },
   // Consulta leve (só a quantidade) usada pelo polling — ver _iniciarPolling
   async contagem()            { return apiFetch("GET",   "/pedidos/contagem"); },
+  // Etapa 5: só os pedidos criados depois de "apos" (+ produtos/estoque-base
+  // que eles tocaram) — usado pelo polling em vez de listar() com limite 200.
+  async buscarNovos(apos)     { return apiFetch("GET",   `/pedidos/novos${_qs({ apos })}`); },
   async criar(d)              { return apiFetch("POST",  "/pedidos", d); },
   // Pedido público: cliente envia sem precisar de token admin
   async criarPublico(slug,d)  { return apiFetch("POST",  `/pedidos/publico/${slug}`, d, true); },
@@ -248,46 +284,58 @@ function marcarPedidoVisto(id) {
 }
 window.marcarPedidoVisto = marcarPedidoVisto;
 
+// Aplica documentos alterados (por id) numa lista existente, sem tocar no
+// resto — usado pelo polling (Etapa 5) pra atualizar produtos/estoque-base
+// com o que a rota /pedidos/novos já devolveu, sem recarregar as coleções inteiras.
+function _aplicarAlterados(lista, alterados) {
+  if (!alterados || !alterados.length) return lista;
+  const porId = new Map(alterados.map(a => [a.id, a]));
+  return (lista || []).map(item => porId.get(item.id) || item);
+}
+
+// Guarda o total de pedidos já conhecido (setado após o login) — o polling
+// só busca algo quando esse número muda, então nunca fica desatualizado
+// mesmo se a lista carregada na tela estiver truncada em 200 itens.
+let _ultimoTotalPedidos = null;
+
 function _iniciarPolling() {
   if (_pollingInterval) return;
 
   _pollingInterval = setInterval(async () => {
     try {
       // Checagem leve primeiro: só a quantidade de pedidos (1 consulta
-      // rápida de contagem) em vez de baixar o histórico inteiro a cada
-      // 12s — a lista completa só é buscada quando o número muda de fato.
+      // rápida de contagem) em vez de baixar qualquer coisa a cada 12s —
+      // só segue adiante quando o número muda de fato. "total" nunca
+      // diminui (excluir pedido é soft-delete, não apaga o documento).
       const { total } = await API_PEDIDOS.contagem();
-      const atualAntes = STATE.get("pedidos") || [];
-      if (total === atualAntes.length) return; // nada novo, não baixa nada
 
-      const pedidos = await API_PEDIDOS.listar();
-      const atual   = STATE.get("pedidos") || [];
+      if (_ultimoTotalPedidos === null) { _ultimoTotalPedidos = total; return; }
+      if (total === _ultimoTotalPedidos) return; // nada novo, não baixa nada
 
-      if (pedidos.length !== atual.length) {
-        const novos = pedidos.length - atual.length;
+      // Etapa 5: busca só os pedidos criados depois do mais recente que já
+      // temos na tela — nunca mais os 200 inteiros nem o catálogo inteiro.
+      const atual = STATE.get("pedidos") || [];
+      const maisRecente = atual.reduce((max, p) => {
+        const d = p.data ? new Date(p.data).getTime() : 0;
+        return d > max ? d : max;
+      }, 0);
+      const apos = maisRecente ? new Date(maisRecente).toISOString() : new Date(0).toISOString();
 
-        // Descobre quais pedidos são realmente novos (por id) para marcar
-        // como "não vistos" — faz o sino piscar neles até o admin clicar.
-        const idsAntigos = new Set(atual.map(p => p.id));
-        pedidos.forEach(p => {
-          if (!idsAntigos.has(p.id)) window.PEDIDOS_NAO_VISTOS.add(p.id);
-        });
+      const resposta = await API_PEDIDOS.buscarNovos(apos);
+      const novosPedidos = resposta.pedidos || [];
+      _ultimoTotalPedidos = total;
 
-        STATE.set("pedidos", pedidos);
+      if (novosPedidos.length) {
+        // Marca como "não vistos" pra fazer o sino piscar até o admin clicar.
+        novosPedidos.forEach(p => window.PEDIDOS_NAO_VISTOS.add(p.id));
 
-        // Sincroniza também produtos (para atualizar estoque e vendas)
-        const [produtos, estoquesBases] = await Promise.all([
-          API_PRODUTOS.listar(),
-          API_ESTOQUE_BASE.listar(),
-        ]);
-        STATE.set("produtos",      produtos      || []);
-        STATE.set("estoquesBases", estoquesBases || []);
+        STATE.set("pedidos", [...novosPedidos, ...atual]);
+        STATE.update("produtos",      lista => _aplicarAlterados(lista, resposta.produtos));
+        STATE.update("estoquesBases", lista => _aplicarAlterados(lista, resposta.estoqueBase));
 
         // Notificação (som em loop + aviso visual) e atualização da interface
-        if (novos > 0) {
-          MODAL.toast(`🔔 ${novos} novo(s) pedido(s) recebido(s)!`);
-          _iniciarLoopSomNotificacao();
-        }
+        MODAL.toast(`🔔 ${novosPedidos.length} novo(s) pedido(s) recebido(s)!`);
+        _iniciarLoopSomNotificacao();
 
         if (typeof renderizarAdmin === "function") renderizarAdmin();
         if (typeof DASHBOARD !== "undefined")      DASHBOARD.atualizar();
@@ -312,6 +360,40 @@ function _iniciarPolling() {
 
 function _pararPolling() {
   if (_pollingInterval) { clearInterval(_pollingInterval); _pollingInterval = null; }
+}
+
+// ============================================================
+// POLLING DA LOJA PÚBLICA — mantém o catálogo sincronizado
+// ============================================================
+// Diferente do polling do admin (que precisa ser rápido, pra tocar o som
+// de novo pedido), aqui o objetivo é só manter o catálogo atualizado pro
+// cliente enquanto ele navega — por isso um intervalo mais espaçado (30s)
+// e uma consulta pública já existente (mesma rota do carregamento inicial).
+//
+// Nunca mexe no carrinho (STATE.carrinho) nem fecha um modal de produto
+// que o cliente esteja com aberto — só atualiza os dados por baixo; a
+// tela em si só é re-renderizada quando não há modal aberto, pra não
+// interromper o cliente no meio de uma escolha de tamanho/complemento.
+let _pollingLojaInterval = null;
+
+function _iniciarPollingLoja(slug) {
+  if (_pollingLojaInterval || !slug) return;
+
+  _pollingLojaInterval = setInterval(async () => {
+    try {
+      const loja = await API_LOJA.carregar(slug);
+      STATE.set("produtos",     loja.produtos     || []);
+      STATE.set("categorias",   loja.categorias   || []);
+      STATE.set("complementos", loja.complementos || []);
+
+      const modalAberto = document.getElementById("produto-modal-overlay");
+      if (!modalAberto && typeof renderizarProdutos === "function") {
+        renderizarProdutos();
+      }
+    } catch (e) {
+      console.warn("[Polling Loja] Erro:", e.message);
+    }
+  }, 30000); // a cada 30 segundos
 }
 
 // ============================================================
@@ -454,11 +536,18 @@ function _patchStorage() {
 // ============================================================
 async function _carregarDadosAdmin() {
   try {
-    const [produtos, categorias, complementos, pedidos, config, estoquesBases] = await Promise.all([
+    // Nota: GET /pedidos agora é paginado (Etapa 2). "Histórico de Vendas"
+    // e "Pedidos Recebidos" ainda compartilham o mesmo STATE.pedidos nesta
+    // etapa (isso muda na Etapa 3), por isso pedimos incluirExcluidos:true
+    // e o limite máximo seguro (200), pra manter o comportamento de antes
+    // pro maior número possível de lojas. Se sua loja já tiver mais de 200
+    // pedidos no total, o Histórico vai mostrar só os 200 mais recentes até
+    // a Etapa 3 (paginação de verdade na tela de Histórico).
+    const [produtos, categorias, complementos, pedidosResposta, config, estoquesBases] = await Promise.all([
       API_PRODUTOS.listar(),
       API_CATEGORIAS.listar(),
       API_COMPLEMENTOS.listar(),
-      API_PEDIDOS.listar(),
+      API_PEDIDOS.listar({ limit: 200, incluirExcluidos: true }),
       API_CONFIG.carregar(),
       API_ESTOQUE_BASE.listar(),
     ]);
@@ -467,8 +556,11 @@ async function _carregarDadosAdmin() {
     STATE.set("produtos",      produtos      || []);
     STATE.set("categorias",    categorias    || []);
     STATE.set("complementos",  complementos  || []);
-    STATE.set("pedidos",       pedidos       || []);
+    STATE.set("pedidos",       pedidosResposta?.itens || []);
     STATE.set("estoquesBases", estoquesBases || []);
+    // Etapa 5: guarda o total já conhecido — o polling só busca algo novo
+    // quando esse número mudar (ver _iniciarPolling).
+    _ultimoTotalPedidos = pedidosResposta?.total ?? null;
 
     _aplicarConfig(config);
     UTIL.aplicarCores();
@@ -653,6 +745,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       const opcRetirada = document.getElementById("opc-retirada");
       if (!CONFIG.delivery.entregaAtiva  && opcEntrega)  opcEntrega.style.display  = "none";
       if (!CONFIG.delivery.retiradaAtiva && opcRetirada) opcRetirada.style.display = "none";
+
+      // Mantém o catálogo sincronizado enquanto o cliente navega na loja —
+      // sem isso, um produto que volta a ficar disponível (reposição de
+      // estoque, reativação automática ou manual pelo admin) só apareceria
+      // depois que o cliente desse F5 na página.
+      _iniciarPollingLoja(slug);
     } catch(e) {
       console.error("Erro ao carregar loja:", e.message);
       // Mesmo em erro, marca como "carregado" pra não deixar o spinner girando
