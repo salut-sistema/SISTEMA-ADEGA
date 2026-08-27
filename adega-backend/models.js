@@ -43,24 +43,39 @@ ProdutoSchema.index({ empresaId: 1, ativo: 1, dataCriacao: 1 });
 
 // ── ESTOQUE-BASE ─────────────────────────────────────────────
 // Representa o estoque compartilhado por múltiplos produtos (ex: Açaí 20kg)
-const MovimentacaoSchema = new mongoose.Schema({
-  data:       { type: String, default: () => new Date().toISOString() },
-  tipo:       { type: String, enum: ["entrada", "saida", "ajuste"] }, // tipo de movimentação
-  quantidade: Number,     // valor movimentado
-  descricao:  String,     // motivo/descrição
-  pedidoId:   String,     // referência ao pedido, se houver
-}, { _id: false });
-
 const EstoqueBaseSchema = new mongoose.Schema({
   empresaId:    { type: String, required: true, index: true },
   id:           { type: String, required: true },
   nome:         { type: String, required: true },               // Ex: "Açaí"
   unidade:      { type: String, enum: ["kg", "L"], default: "kg" }, // Kg ou Litros
   quantidade:   { type: Number, default: 0 },                   // quantidade atual
-  movimentacoes: [MovimentacaoSchema],                           // histórico completo
 }, { timestamps: true });
 
 EstoqueBaseSchema.index({ empresaId: 1, id: 1 }, { unique: true });
+
+// ── MOVIMENTAÇÃO DE ESTOQUE-BASE ────────────────────────────
+// Etapa 6: antes esse histórico vivia dentro de EstoqueBase.movimentacoes
+// (um array que só crescia, para sempre, dentro do MESMO documento que é
+// lido toda vez que alguém consulta o estoque-base — dashboard, controle
+// de estoque, toda venda que desconta desse estoque). Numa loja com bastante
+// movimento, isso deixava esse documento cada vez mais pesado de carregar,
+// mesmo quando ninguém precisava do histórico naquele momento.
+//
+// Agora cada movimentação é um documento próprio nesta coleção — o
+// EstoqueBase fica sempre leve (só o essencial: nome, unidade, quantidade
+// atual), e o histórico só é consultado quando alguém realmente pede
+// (rota GET /estoque-base/:id/movimentacoes, paginada).
+const MovimentacaoEstoqueBaseSchema = new mongoose.Schema({
+  empresaId:     { type: String, required: true, index: true },
+  estoqueBaseId: { type: String, required: true },
+  tipo:          { type: String, enum: ["entrada", "saida", "ajuste"] },
+  quantidade:    Number,
+  descricao:     String,
+  pedidoId:      String,
+  data:          { type: Date, default: () => new Date() },
+}, { timestamps: true });
+
+MovimentacaoEstoqueBaseSchema.index({ empresaId: 1, estoqueBaseId: 1, data: -1 });
 
 // ── CATEGORIA ─────────────────────────────────────────────────
 const CategoriaSchema = new mongoose.Schema({
@@ -177,8 +192,9 @@ const ConfigSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 module.exports = {
-  Produto:      mongoose.model("Produto",      ProdutoSchema),
-  EstoqueBase:  mongoose.model("EstoqueBase",  EstoqueBaseSchema),
+  Produto:                  mongoose.model("Produto",                  ProdutoSchema),
+  EstoqueBase:               mongoose.model("EstoqueBase",              EstoqueBaseSchema),
+  MovimentacaoEstoqueBase:   mongoose.model("MovimentacaoEstoqueBase",  MovimentacaoEstoqueBaseSchema),
   Categoria:    mongoose.model("Categoria",    CategoriaSchema),
   Complemento:  mongoose.model("Complemento",  ComplementoSchema),
   Pedido:       mongoose.model("Pedido",       PedidoSchema),

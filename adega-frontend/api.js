@@ -154,6 +154,11 @@ const API_ESTOQUE_BASE = {
   async movimentar(id, tipo, qtd, desc) {
     return apiFetch("PATCH", `/estoque-base/${id}/movimentar`, { tipo, quantidade: qtd, descricao: desc });
   },
+  // Etapa 6: histórico paginado, numa coleção própria — só busca quando
+  // alguém realmente pede pra ver (ex: futura tela de histórico).
+  async movimentacoes(id, pagina = 1, limite = 30) {
+    return apiFetch("GET", `/estoque-base/${id}/movimentacoes${_qs({ page: pagina, limit: limite })}`);
+  },
 };
 
 // ============================================================

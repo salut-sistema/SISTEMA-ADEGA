@@ -819,9 +819,19 @@ const DASHBOARD = {
     s("fat-mes", UTIL.formatarMoeda(this.faturamentoMes()));
     s("fat-ano", UTIL.formatarMoeda(this.faturamentoAno()));
     s("tot-pedidos", this.totalPedidos());
+    this._ajustarTamanhoCards();
     this.renderizarAlertas();
     this.renderizarMaisPedidos();
     this.renderizarResumoEstoque();
+  },
+  // Se qualquer um dos cards de faturamento/pedidos passar de 6 dígitos,
+  // diminui a fonte de TODOS eles junto (padronizado) — em vez de cada
+  // card encolher sozinho, ficando com tamanhos diferentes entre si.
+  _ajustarTamanhoCards() {
+    const cards = document.querySelectorAll("#sec-dashboard .dash-cards .dash-card-valor");
+    if (!cards.length) return;
+    const algumGrande = [...cards].some(el => (el.textContent.match(/\d/g) || []).length >= 6);
+    cards.forEach(el => el.classList.toggle("dash-card-valor--compacto", algumGrande));
   },
   renderizarAlertas() {
     const el = document.getElementById("lista-estoque-baixo");

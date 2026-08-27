@@ -53,7 +53,8 @@ app.get("/", (req, res) => {
 
 // ── Conexão com MongoDB Atlas ─────────────────────────────────
 const { migrarDatasPedidos } = require("./migrations/migrar-data-pedidos");
-const { Pedido } = require("./models");
+const { migrarMovimentacoesEstoqueBase } = require("./migrations/migrar-movimentacoes-estoque-base");
+const { Pedido, EstoqueBase, MovimentacaoEstoqueBase } = require("./models");
 
 mongoose.connect(process.env.MONGODB_URI)
   .then(async () => {
@@ -71,6 +72,15 @@ mongoose.connect(process.env.MONGODB_URI)
       }
     } catch (e) {
       console.error("⚠️  Falha ao rodar migração de datas (servidor segue normalmente):", e.message);
+    }
+
+    try {
+      const resultado = await migrarMovimentacoesEstoqueBase(EstoqueBase, MovimentacaoEstoqueBase);
+      if (!resultado.jaEstavaAtualizado) {
+        console.log(`🔄 Migração de estoque-base: ${resultado.movimentacoes} movimentação(ões) de ${resultado.migrados} estoque(s)-base movida(s) para a coleção própria.`);
+      }
+    } catch (e) {
+      console.error("⚠️  Falha ao rodar migração de estoque-base (servidor segue normalmente):", e.message);
     }
 
     app.listen(PORT, () => {

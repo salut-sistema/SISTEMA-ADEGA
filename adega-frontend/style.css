@@ -894,6 +894,9 @@ body.loja-carregando > *:not(#loja-loading-overlay) {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 20px;
   position: relative; overflow: hidden;
+  min-width: 0; /* permite o card encolher no grid — sem isso, um valor
+                   grande força a coluna a ficar mais larga que 1fr e
+                   quebra o layout inteiro (bug clássico de CSS Grid) */
 }
 .dash-card::before {
   content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
@@ -901,7 +904,23 @@ body.loja-carregando > *:not(#loja-loading-overlay) {
 }
 .dash-card-icon { font-size: 28px; margin-bottom: 8px; }
 .dash-card-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
-.dash-card-valor { font-family: var(--font-display); font-size: 22px; font-weight: 800; }
+.dash-card-valor {
+  font-family: var(--font-display);
+  font-size: clamp(15px, 4.5vw, 22px); /* diminui sozinho em telas estreitas */
+  font-weight: 800;
+  line-height: 1.2;
+  overflow-wrap: break-word; /* quebra linha em vez de estourar o card */
+  word-break: break-word;
+  transition: font-size 0.15s ease;
+}
+/* Aplicada via JS (DASHBOARD._ajustarTamanhoCards) nos 4 cards de uma vez
+   — assim que qualquer um deles passa de 6 dígitos, todos ficam com o
+   mesmo tamanho reduzido, em vez de cada um encolher sozinho e ficar
+   desalinhado com os outros. */
+.dash-card-valor--compacto {
+  font-size: clamp(11px, 3vw, 15px);
+  white-space: nowrap;
+}
 
 .dash-grid {
   display: grid;
@@ -1118,7 +1137,6 @@ input[type="color"] {
   .pm-img { height: 100px; }
   .pm-qtd-row { flex-direction: column; }
   .pm-add { width: 100%; }
-  .dash-card-valor { font-size: 18px; }
 }
 
 

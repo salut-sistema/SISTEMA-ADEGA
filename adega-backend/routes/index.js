@@ -4,7 +4,7 @@
 // ============================================================
 const express     = require("express");
 const router      = express.Router();
-const { Produto, EstoqueBase, Categoria, Complemento, Pedido, Config, Contador } = require("../models");
+const { Produto, EstoqueBase, MovimentacaoEstoqueBase, Categoria, Complemento, Pedido, Config, Contador } = require("../models");
 const { authMiddleware, EMPRESAS, empresaValida } = require("../middleware/auth");
 const { SENHA_MASTER, SOM_NOTIFICACAO_PEDIDO } = require("../empresasConfig");
 
@@ -214,9 +214,10 @@ router.post("/estoque-base", async (req, res) => {
       id: uid(),
       nome, unidade,
       quantidade: _round3(quantidade),
-      movimentacoes: [{
-        tipo: "entrada", quantidade: _round3(quantidade),
-      }]
+    });
+    await MovimentacaoEstoqueBase.create({
+      empresaId: req.empresaId, estoqueBaseId: eb.id,
+      tipo: "entrada", quantidade: _round3(quantidade),
     });
     ok(res, eb);
   } catch (e) { err(res, e.message); }
@@ -256,9 +257,31 @@ router.patch("/estoque-base/:id/movimentar", async (req, res) => {
     else if (tipo === "saida") eb.quantidade = _round3(Math.max(0, eb.quantidade - qtd));
     else if (tipo === "ajuste") eb.quantidade = _round3(qtd);
 
-    eb.movimentacoes.push({ tipo, quantidade: qtd, descricao: descricao || "", data: new Date().toISOString() });
     await eb.save();
+    await MovimentacaoEstoqueBase.create({
+      empresaId: req.empresaId, estoqueBaseId: eb.id,
+      tipo, quantidade: qtd, descricao: descricao || "",
+    });
     ok(res, eb);
+  } catch (e) { err(res, e.message); }
+});
+
+// GET /api/estoque-base/:id/movimentacoes — histórico paginado (Etapa 6).
+// Antes esse histórico vinha embutido em TODO carregamento do estoque-base
+// (dashboard, controle de estoque, cada venda); agora é uma consulta à
+// parte, feita só quando alguém realmente pede pra ver o histórico.
+router.get("/estoque-base/:id/movimentacoes", async (req, res) => {
+  try {
+    const page  = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 30));
+
+    const filtro = { empresaId: req.empresaId, estoqueBaseId: req.params.id };
+    const [itens, total] = await Promise.all([
+      MovimentacaoEstoqueBase.find(filtro).sort({ data: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+      MovimentacaoEstoqueBase.countDocuments(filtro),
+    ]);
+
+    ok(res, { itens, total, pagina: page, limite: limit, totalPaginas: Math.max(1, Math.ceil(total / limit)) });
   } catch (e) { err(res, e.message); }
 });
 
@@ -798,6 +821,7 @@ async function _descontarEstoque(empresaId, itens = []) {
   const produtosTocados = new Set();
   const complementosTocados = new Set();
   const estoquesBaseTocados = new Set();
+  const movimentacoesNovas = []; // Etapa 6: coleta pra gravar tudo de uma vez no final
 
   for (const item of itens) {
     const prod = produtosMap.get(item.produtoId);
@@ -816,10 +840,11 @@ async function _descontarEstoque(empresaId, itens = []) {
       const eb = estoqueBaseMap.get(prod.estoqueBaseId);
       if (eb) {
         eb.quantidade = _round3(Math.max(0, eb.quantidade - consumoKgL));
-        eb.movimentacoes.push({
+        movimentacoesNovas.push({
+          empresaId, estoqueBaseId: eb.id,
           tipo: "saida", quantidade: consumoKgL,
           descricao: `Venda: ${item.quantidade}x ${prod.nome} (${unidade})`,
-          pedidoId: item.id || "", data: new Date().toISOString()
+          pedidoId: item.id || "",
         });
         estoquesBaseTocados.add(eb);
       }
@@ -861,10 +886,11 @@ async function _descontarEstoque(empresaId, itens = []) {
         const eb = estoqueBaseMap.get(c.estoqueBaseId);
         if (eb) {
           eb.quantidade = _round3(Math.max(0, eb.quantidade - totalConsumo));
-          eb.movimentacoes.push({
+          movimentacoesNovas.push({
+            empresaId, estoqueBaseId: eb.id,
             tipo: "saida", quantidade: totalConsumo,
             descricao: `Complemento: ${item.quantidade}x ${c.nome} (${c.consumoQtd}${c.consumoUnidade})`,
-            pedidoId: item.id || "", data: new Date().toISOString()
+            pedidoId: item.id || "",
           });
           estoquesBaseTocados.add(eb);
         }
@@ -876,6 +902,7 @@ async function _descontarEstoque(empresaId, itens = []) {
     ...[...produtosTocados].map(p => p.save()),
     ...[...complementosTocados].map(c => c.save()),
     ...[...estoquesBaseTocados].map(e => e.save()),
+    ...(movimentacoesNovas.length ? [MovimentacaoEstoqueBase.insertMany(movimentacoesNovas)] : []),
   ]);
 
   // Etapa 3: devolve os documentos alterados (em vez de nada) pra quem
@@ -889,9 +916,6 @@ async function _descontarEstoque(empresaId, itens = []) {
   };
 }
 
-// ============================================================
-// FUNÇÃO INTERNA — repõe estoque ao cancelar/excluir pedido
-// ============================================================
 // ============================================================
 // FUNÇÃO INTERNA — junta dois resultados de {produtos,complementos,
 // estoquesBase} por id, mantendo sempre a versão mais recente (a "b",
@@ -917,6 +941,7 @@ async function _reporEstoque(empresaId, itens = []) {
   const produtosTocados = new Set();
   const complementosTocados = new Set();
   const estoquesBaseTocados = new Set();
+  const movimentacoesNovas = []; // Etapa 6: coleta pra gravar tudo de uma vez no final
 
   for (const item of itens) {
     const prod = produtosMap.get(item.produtoId);
@@ -932,10 +957,11 @@ async function _reporEstoque(empresaId, itens = []) {
       const eb = estoqueBaseMap.get(prod.estoqueBaseId);
       if (eb) {
         eb.quantidade = _round3(eb.quantidade + consumoKgL);
-        eb.movimentacoes.push({
+        movimentacoesNovas.push({
+          empresaId, estoqueBaseId: eb.id,
           tipo: "entrada", quantidade: consumoKgL,
           descricao: `Cancelamento: ${item.quantidade}x ${prod.nome}`,
-          pedidoId: item.id || "", data: new Date().toISOString()
+          pedidoId: item.id || "",
         });
         estoquesBaseTocados.add(eb);
       }
@@ -972,10 +998,11 @@ async function _reporEstoque(empresaId, itens = []) {
         const eb = estoqueBaseMap.get(c.estoqueBaseId);
         if (eb) {
           eb.quantidade = _round3(eb.quantidade + totalConsumo);
-          eb.movimentacoes.push({
+          movimentacoesNovas.push({
+            empresaId, estoqueBaseId: eb.id,
             tipo: "entrada", quantidade: totalConsumo,
             descricao: `Cancelamento complemento: ${item.quantidade}x ${c.nome}`,
-            pedidoId: item.id || "", data: new Date().toISOString()
+            pedidoId: item.id || "",
           });
           estoquesBaseTocados.add(eb);
         }
@@ -987,6 +1014,7 @@ async function _reporEstoque(empresaId, itens = []) {
     ...[...produtosTocados].map(p => p.save()),
     ...[...complementosTocados].map(c => c.save()),
     ...[...estoquesBaseTocados].map(e => e.save()),
+    ...(movimentacoesNovas.length ? [MovimentacaoEstoqueBase.insertMany(movimentacoesNovas)] : []),
   ]);
 
   return {
