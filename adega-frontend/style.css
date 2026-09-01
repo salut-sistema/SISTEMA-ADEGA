@@ -592,7 +592,20 @@ body.loja-carregando > *:not(#loja-loading-overlay) {
 .ci-info strong { display: block; font-size: 13px; font-weight: 700; margin-bottom: 3px; }
 .ci-info small { display: block; font-size: 11px; color: var(--text-muted); }
 .ci-obs { color: var(--warning) !important; }
+.ci-desconto { display: block; color: var(--secondary); font-weight: 700; }
 .ci-preco { display: block; font-weight: 700; color: var(--secondary); font-size: 13px; margin-top: 4px; }
+
+/* ALTERAÇÃO 2 — Desconto por categoria (Produtos Cadastrados) */
+.adm-cat-desconto {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 12px; color: var(--text-muted); font-weight: 600;
+  margin-left: auto;
+}
+.adm-cat-desconto input {
+  width: 52px; padding: 3px 6px; text-align: center;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text); font-size: 12px; font-weight: 700;
+}
 .ci-qtd { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .ci-qtd button { width: 28px; height: 28px; border-radius: 6px; background: var(--surface); font-size: 16px; font-weight: 700; color: var(--text); transition: var(--transition); }
 .ci-qtd button:hover { background: var(--primary); }
@@ -1058,6 +1071,42 @@ body.loja-carregando > *:not(#loja-loading-overlay) {
 .pedido-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-size: 14px; }
 .pedido-itens { margin-bottom: 10px; display: flex; flex-direction: column; gap: 4px; }
 .pedido-footer { display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: var(--text-muted); }
+
+/* ============================================================
+   ALTERAÇÃO 1 — Menu de ações do pedido ("⋮"). UMA implementação só,
+   usada igual em desktop e responsivo — a media query no fim só ajusta
+   tamanho/posição pra telas pequenas, não muda o comportamento.
+   ============================================================ */
+.pedido-header-acoes { position: relative; }
+
+.pedido-acoes-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: 50%; border: none;
+  background: var(--surface2); color: var(--text);
+  font-size: 18px; font-weight: 900; line-height: 1; cursor: pointer;
+  transition: var(--transition);
+}
+.pedido-acoes-toggle:hover, .pedido-acoes-toggle.ativo { background: var(--primary, #5B2D8E); color: #fff; }
+
+.pedido-acoes {
+  display: none; /* fechado por padrão — abre com a classe .aberto */
+  position: absolute; top: calc(100% + 6px); right: 0;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow);
+  padding: 8px; flex-direction: column; gap: 4px; min-width: 190px;
+  z-index: 50;
+}
+.pedido-acoes.aberto { display: flex; }
+.pedido-acoes .btn-icon, .pedido-acoes .btn-outline {
+  width: 100%; height: auto; justify-content: flex-start;
+  padding: 8px 10px; font-size: 13px !important; border-radius: var(--radius-sm);
+}
+
+/* Só ajustes de tamanho/posição pra telas pequenas — mesmo comportamento */
+@media (max-width: 767px) {
+  .pedido-acoes-toggle { width: 30px; height: 30px; font-size: 16px; }
+  .pedido-acoes { min-width: 170px; }
+}
 
 /* CONFIG */
 .config-secao {

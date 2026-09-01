@@ -106,7 +106,7 @@ const EMPRESAS = [
 // altere APENAS o valor abaixo. Nenhum outro arquivo precisa
 // ser modificado.
 // ============================================================
-const SENHA_MASTER = "1234";
+const SENHA_MASTER = "12";
 
 // ============================================================
 // SOM_NOTIFICACAO_PEDIDO — Som que toca no painel admin quando

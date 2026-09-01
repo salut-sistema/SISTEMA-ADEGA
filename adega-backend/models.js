@@ -87,6 +87,13 @@ const CategoriaSchema = new mongoose.Schema({
   frase:     { type: String, default: "" },
   ativo:     { type: Boolean, default: true },
   ordem:     { type: Number, default: 0 },
+  // ALTERAÇÃO 2 — desconto por quantidade de peças da MESMA categoria no
+  // carrinho (ex: "a partir de 6 peças de Bebidas, 10% de desconto").
+  // Só 2 números — o cálculo em si é feito na hora (CARRINHO.total(),
+  // no frontend), sem guardar nada duplicado nem mexer no preço base
+  // cadastrado do produto.
+  descontoQtdMinima:  { type: Number, default: 0 },
+  descontoPercentual: { type: Number, default: 0, min: 0, max: 100 },
 }, { timestamps: true });
 
 CategoriaSchema.index({ empresaId: 1, id: 1 }, { unique: true });

@@ -457,7 +457,28 @@ const TABS = {
 // direto de STATE.carrinho (não do pedido salvo).
 // ============================================================
 function _itensParaEnvio(carrinho) {
-  return (carrinho || []).map(({ imagem, ...resto }) => resto);
+  // ALTERAÇÃO 2 (correção): usa o MESMO cálculo de CARRINHO.total() pra
+  // saber quais itens tiveram desconto por categoria — e já grava o preço
+  // COM desconto em cada item enviado. Sem isso, o pedido chegava com o
+  // total certo (descontado), mas o preço unitário de cada item ficava
+  // com o valor cheio, escondendo do admin que aquele cliente teve
+  // desconto. Também desconta os complementos do item, na mesma
+  // proporção — assim a soma dos itens salvos sempre bate exatamente
+  // com o total do pedido.
+  const percentuais = CARRINHO._percentuaisDescontoPorCategoria();
+  return (carrinho || []).map(({ imagem, ...resto }) => {
+    const percentual = CARRINHO._percentualDoItem(resto, percentuais);
+    if (percentual <= 0) return resto;
+    const fator = 1 - percentual / 100;
+    return {
+      ...resto,
+      preco: Math.round(resto.preco * fator * 100) / 100,
+      complementos: (resto.complementos || []).map(c => ({
+        ...c,
+        preco: Math.round((c.preco || 0) * fator * 100) / 100,
+      })),
+    };
+  });
 }
 
 // ============================================================
@@ -497,10 +518,45 @@ const CARRINHO = {
     STATE.set("carrinho", []);
     STORAGE.salvarCarrinho();
   },
+  // ALTERAÇÃO 2 — desconto por quantidade de peças da mesma categoria.
+  // Devolve um mapa { categoriaId: percentual } só com as categorias que
+  // bateram a quantidade mínima configurada nelas (ver renderizarAdmProdutos).
+  // Cálculo leve: roda só sobre os itens que já estão no carrinho (poucos
+  // itens, normalmente), sem nenhuma consulta nova ao servidor.
+  _percentuaisDescontoPorCategoria() {
+    const carrinho   = STATE.get("carrinho") || [];
+    const produtos   = STATE.get("produtos") || [];
+    const categorias = STATE.get("categorias") || [];
+
+    const qtdPorCategoria = {};
+    carrinho.forEach(i => {
+      const prod = produtos.find(p => p.id === i.produtoId);
+      if (!prod || !prod.categoria) return;
+      qtdPorCategoria[prod.categoria] = (qtdPorCategoria[prod.categoria] || 0) + i.quantidade;
+    });
+
+    const percentuais = {};
+    categorias.forEach(c => {
+      if (c.descontoQtdMinima > 0 && c.descontoPercentual > 0 &&
+          (qtdPorCategoria[c.id] || 0) >= c.descontoQtdMinima) {
+        percentuais[c.id] = c.descontoPercentual;
+      }
+    });
+    return percentuais;
+  },
+  // Percentual de desconto que se aplica a ESTE item específico do carrinho
+  // (0 se o produto dele não está numa categoria com desconto ativo).
+  _percentualDoItem(item, percentuaisPorCategoria) {
+    const prod = (STATE.get("produtos") || []).find(p => p.id === item.produtoId);
+    return prod ? (percentuaisPorCategoria[prod.categoria] || 0) : 0;
+  },
   total() {
+    const percentuais = this._percentuaisDescontoPorCategoria();
     return STATE.get("carrinho").reduce((s, i) => {
-      const compPreco = i.complementos.reduce((cs, c) => cs + (c.preco || 0), 0);
-      return s + (i.preco + compPreco) * i.quantidade;
+      const compPreco  = i.complementos.reduce((cs, c) => cs + (c.preco || 0), 0);
+      const percentual = this._percentualDoItem(i, percentuais);
+      const precoUnit  = (i.preco + compPreco) * (1 - percentual / 100);
+      return s + precoUnit * i.quantidade;
     }, 0);
   },
   atualizarUI() {
@@ -519,9 +575,11 @@ const CARRINHO = {
     if (carrinho.length === 0) {
       container.innerHTML = `<div class="carrinho-vazio"><span>🛒</span><p>${ENUMS.MSGS.CARRINHO_VAZIO}</p></div>`;
     } else {
+      const percentuais = this._percentuaisDescontoPorCategoria();
       container.innerHTML = carrinho.map(item => {
         const compPreco = item.complementos.reduce((s, c) => s + (c.preco || 0), 0);
-        const subtotal = (item.preco + compPreco) * item.quantidade;
+        const percentual = this._percentualDoItem(item, percentuais);
+        const subtotal = (item.preco + compPreco) * (1 - percentual / 100) * item.quantidade;
         return `<div class="carrinho-item" data-id="${item.id}">
           <div class="ci-img">${item.imagem
             ? `<img src="${UTIL.sanitize(item.imagem)}" alt="">`
@@ -531,6 +589,7 @@ const CARRINHO = {
             ${item.tamanho ? `<small>Tamanho: ${item.tamanho}</small>` : ""}
             ${item.complementos.length ? `<small>+ ${item.complementos.map(c => c.nome).join(", ")}</small>` : ""}
             ${item.observacao ? `<small class="ci-obs">📝 ${UTIL.sanitize(item.observacao)}</small>` : ""}
+            ${percentual > 0 ? `<small class="ci-desconto">🏷️ -${percentual}% (promoção por quantidade)</small>` : ""}
             <span class="ci-preco">${UTIL.formatarMoeda(subtotal)}</span>
           </div>
           <div class="ci-qtd">
@@ -1398,6 +1457,32 @@ function renderizarAdmin() {
   DASHBOARD.atualizar();
 }
 
+// ============================================================
+// ALTERAÇÃO 2 — Desconto por categoria (quantidade de peças)
+// ============================================================
+// Chamado quando o admin sai de um dos 2 campos (qtd. mínima ou %), em
+// "Produtos Cadastrados". Usa CATEGORIAS.editar (já existente, edição
+// otimista) — sem nenhuma rota nova no backend, o valor só some no
+// mesmo PUT /categorias/:id que já existia.
+function atualizarDescontoCategoria(catId, campo, valorDigitado) {
+  const cat = (STATE.get("categorias") || []).find(c => c.id === catId);
+  if (!cat) return;
+
+  let valor = parseFloat(String(valorDigitado).replace(",", ".").trim());
+  if (!Number.isFinite(valor) || valor < 0) valor = 0;
+  if (campo === "descontoPercentual" && valor > 100) valor = 100;
+
+  if (valor === (cat[campo] || 0)) return; // nada mudou, evita chamada à toa
+
+  CATEGORIAS.editar(catId, { [campo]: valor });
+  MODAL.toast(
+    campo === "descontoQtdMinima"
+      ? `Quantidade mínima da categoria "${cat.nome}" atualizada.`
+      : `Desconto da categoria "${cat.nome}" atualizado.`
+  );
+}
+window.atualizarDescontoCategoria = atualizarDescontoCategoria;
+
 function renderizarAdmProdutos() {
   const container = document.getElementById("adm-produtos-lista");
   if (!container) return;
@@ -1453,8 +1538,24 @@ function renderizarAdmProdutos() {
 
     return `
       <div class="adm-grupo-categoria" style="margin-bottom:16px;">
-        <div style="font-size:13px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border);">
-          ${UTIL.sanitize(nomeCategoria)} <span style="font-weight:400;">(${itens.length})</span>
+        <div class="adm-cat-header" style="display:flex;align-items:center;flex-wrap:wrap;gap:10px;font-size:13px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border);">
+          <span>${UTIL.sanitize(nomeCategoria)} <span style="font-weight:400;">(${itens.length})</span></span>
+          ${cat ? `
+          <span class="adm-cat-desconto" title="Desconto automático quando o cliente colocar essa quantidade (ou mais) de peças dessa categoria no carrinho">
+            <span style="text-transform:none;letter-spacing:0;">Desconto a partir de</span>
+            <input type="number" min="0" step="1" inputmode="numeric" placeholder="qtd"
+              value="${cat.descontoQtdMinima > 0 ? cat.descontoQtdMinima : ""}"
+              onclick="event.stopPropagation()"
+              onkeydown="event.stopPropagation(); if(event.key==='Enter'){this.blur()}"
+              onblur="atualizarDescontoCategoria('${cat.id}', 'descontoQtdMinima', this.value)">
+            <span style="text-transform:none;letter-spacing:0;">peças,</span>
+            <input type="number" min="0" max="100" step="0.01" inputmode="decimal" placeholder="0"
+              value="${cat.descontoPercentual > 0 ? cat.descontoPercentual : ""}"
+              onclick="event.stopPropagation()"
+              onkeydown="event.stopPropagation(); if(event.key==='Enter'){this.blur()}"
+              onblur="atualizarDescontoCategoria('${cat.id}', 'descontoPercentual', this.value)">
+            <span style="text-transform:none;letter-spacing:0;">% off</span>
+          </span>` : ""}
         </div>
         ${itens.map(p => `
           <div class="adm-item ${p.ativo ? "" : "pausado"}">
@@ -1893,14 +1994,24 @@ function cardPedido(p, somenteLeitura = false) {
 
   // No Histórico (somenteLeitura) não existe nenhum botão de ação — é uma
   // trilha de auditoria, apenas para consulta, para evitar fraude.
+  //
+  // ALTERAÇÃO 1: os 4 botões continuam exatamente os mesmos (mesmas
+  // funções, mesmo onclick) — só que agora agrupados dentro de um menu
+  // (#pedido-acoes-ID) aberto pelo botão "⋮". Funciona igual em desktop
+  // e mobile — uma implementação só (ver toggleMenuPedidoAcoes e o CSS
+  // .pedido-acoes-toggle / .pedido-acoes), sem nenhuma duplicação.
   const botoesAcao = somenteLeitura ? "" : `
-        ${btnPago}
-        <button class="btn-icon" title="Adicionar produto ao pedido"
-          onclick="abrirAdicionarProdutoPedido('${p.id}')" style="background:rgba(91,45,142,.2);color:var(--primary,#5B2D8E);">➕</button>
-        <button class="btn-icon" title="Imprimir comprovante"
-          onclick="imprimirPedido('${p.id}')" style="background:rgba(91,45,142,.12);">🖨️</button>
-        <button class="btn-icon btn-icon-del" title="Excluir pedido e estornar estoque"
-          onclick="confirmarExcluirPedido('${p.id}')">🗑️</button>`;
+        <button class="pedido-acoes-toggle" type="button" title="Mais opções"
+          onclick="event.stopPropagation(); toggleMenuPedidoAcoes('${p.id}')">⋮</button>
+        <div class="pedido-acoes" id="pedido-acoes-${p.id}">
+          ${btnPago}
+          <button class="btn-icon" title="Adicionar produto ao pedido"
+            onclick="abrirAdicionarProdutoPedido('${p.id}')" style="background:rgba(91,45,142,.2);color:var(--primary,#5B2D8E);">➕</button>
+          <button class="btn-icon" title="Imprimir comprovante"
+            onclick="imprimirPedido('${p.id}')" style="background:rgba(91,45,142,.12);">🖨️</button>
+          <button class="btn-icon btn-icon-del" title="Excluir pedido e estornar estoque"
+            onclick="confirmarExcluirPedido('${p.id}')">🗑️</button>
+        </div>`;
 
   return `
   <div class="pedido-card${naoVisto ? " pedido-nao-visto" : ""}"${naoVisto ? ` onclick="marcarPedidoVisto('${p.id}')"` : ""}>
@@ -1913,7 +2024,7 @@ function cardPedido(p, somenteLeitura = false) {
         ${p.cliente?.telefone ? `<small style="color:var(--text-muted); display:block;"> ${UTIL.sanitize(p.cliente.telefone)}</small>` : ""}
         <small style="color:var(--text-muted); display:block;">${UTIL.formatarData(p.data)}</small>
       </div>
-      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+      <div class="pedido-header-acoes" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
         ${sinoNotificacao}
         <span class="badge-${corBadge}">${p.status}</span>
         ${p.origem === "manual" ? `<span class="badge-primary" title="Venda registrada pelo administrador (balcão)">🧑‍💼 Presencial</span>` : ""}
@@ -1937,6 +2048,53 @@ function cardPedido(p, somenteLeitura = false) {
       : ""}
   </div>`;
 }
+
+// ============================================================
+// ALTERAÇÃO 1 — Menu de ações do pedido (desktop + responsivo)
+// ============================================================
+// Uma implementação única (não tem versão separada pra desktop e outra
+// pra mobile) — o CSS é que cuida do tamanho/posição diferente em cada
+// tela (ver .pedido-acoes-toggle e .pedido-acoes no style.css). Cada
+// pedido tem seu próprio menu (id="pedido-acoes-ID"), então abrir um
+// nunca mistura ou interfere no de outro pedido.
+function toggleMenuPedidoAcoes(id) {
+  const menu = document.getElementById(`pedido-acoes-${id}`);
+  if (!menu) return;
+  const jaAberto = menu.classList.contains("aberto");
+  // Só um menu aberto por vez — abrir um fecha qualquer outro que já
+  // estivesse aberto (de outro pedido).
+  document.querySelectorAll(".pedido-acoes.aberto").forEach(el => el.classList.remove("aberto"));
+  document.querySelectorAll(".pedido-acoes-toggle.ativo").forEach(el => el.classList.remove("ativo"));
+  if (!jaAberto) {
+    menu.classList.add("aberto");
+    menu.closest(".pedido-header-acoes")?.querySelector(".pedido-acoes-toggle")?.classList.add("ativo");
+  }
+}
+window.toggleMenuPedidoAcoes = toggleMenuPedidoAcoes;
+
+// Fecha ao clicar fora do menu, e fecha automaticamente assim que uma das
+// opções dentro dele é escolhida (a função do botão já rodou nesse mesmo
+// clique — só fechamos o menu depois, na fase de propagação do evento).
+// Funciona igual com clique de mouse e toque no celular ("click" cobre os
+// dois, o navegador dispara "click" também depois de um toque/tap).
+document.addEventListener("click", (e) => {
+  const dentroDoToggle = e.target.closest(".pedido-acoes-toggle");
+  if (dentroDoToggle) return; // o próprio botão de abrir/fechar já cuida disso
+
+  const menuClicado = e.target.closest(".pedido-acoes");
+  if (menuClicado) {
+    // Clicou numa opção dentro do menu → executa a ação (já rodou) e fecha só esse menu
+    if (e.target.closest("button")) {
+      menuClicado.classList.remove("aberto");
+      menuClicado.closest(".pedido-header-acoes")?.querySelector(".pedido-acoes-toggle")?.classList.remove("ativo");
+    }
+    return;
+  }
+
+  // Clicou em qualquer lugar fora de todo mundo → fecha tudo que estiver aberto
+  document.querySelectorAll(".pedido-acoes.aberto").forEach(el => el.classList.remove("aberto"));
+  document.querySelectorAll(".pedido-acoes-toggle.ativo").forEach(el => el.classList.remove("ativo"));
+});
 
 function renderizarAdmPedidos() {
   const activeContainer = document.getElementById("pedidos-recebidos-lista");
