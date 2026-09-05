@@ -1073,22 +1073,24 @@ body.loja-carregando > *:not(#loja-loading-overlay) {
 .pedido-footer { display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: var(--text-muted); }
 
 /* ============================================================
-   ALTERAÇÃO 1 — Menu de ações do pedido ("⋮"). UMA implementação só,
-   usada igual em desktop e responsivo — a media query no fim só ajusta
-   tamanho/posição pra telas pequenas, não muda o comportamento.
+   MENU DE AÇÕES "⋮" — UMA implementação só, usada em Pedidos Recebidos,
+   Produtos Cadastrados, Categorias Cadastradas, Acompanhamentos
+   Cadastrados e Estoque-Base. Igual em desktop e responsivo — a media
+   query no fim só ajusta tamanho/posição pra telas pequenas, não muda
+   o comportamento.
    ============================================================ */
-.pedido-header-acoes { position: relative; }
+.acoes-menu-wrap { position: relative; }
 
-.pedido-acoes-toggle {
+.acoes-menu-toggle {
   display: inline-flex; align-items: center; justify-content: center;
   width: 32px; height: 32px; border-radius: 50%; border: none;
   background: var(--surface2); color: var(--text);
   font-size: 18px; font-weight: 900; line-height: 1; cursor: pointer;
-  transition: var(--transition);
+  transition: var(--transition); flex-shrink: 0;
 }
-.pedido-acoes-toggle:hover, .pedido-acoes-toggle.ativo { background: var(--primary, #5B2D8E); color: #fff; }
+.acoes-menu-toggle:hover, .acoes-menu-toggle.ativo { background: var(--primary, #5B2D8E); color: #fff; }
 
-.pedido-acoes {
+.acoes-menu {
   display: none; /* fechado por padrão — abre com a classe .aberto */
   position: absolute; top: calc(100% + 6px); right: 0;
   background: var(--surface); border: 1px solid var(--border);
@@ -1096,16 +1098,21 @@ body.loja-carregando > *:not(#loja-loading-overlay) {
   padding: 8px; flex-direction: column; gap: 4px; min-width: 190px;
   z-index: 50;
 }
-.pedido-acoes.aberto { display: flex; }
-.pedido-acoes .btn-icon, .pedido-acoes .btn-outline {
+.acoes-menu.aberto { display: flex; }
+.acoes-menu .btn-icon, .acoes-menu .btn-outline {
   width: 100%; height: auto; justify-content: flex-start;
   padding: 8px 10px; font-size: 13px !important; border-radius: var(--radius-sm);
+  gap: 8px; white-space: nowrap;
 }
+/* Nome de cada opção, ao lado do ícone (só aparece dentro do menu — os
+   botões fora dele, quando existem em algum lugar, continuam só com o
+   ícone, sem mudar nada de como já funcionavam). */
+.acoes-menu-label { font-size: 12px; font-weight: 600; }
 
 /* Só ajustes de tamanho/posição pra telas pequenas — mesmo comportamento */
 @media (max-width: 767px) {
-  .pedido-acoes-toggle { width: 30px; height: 30px; font-size: 16px; }
-  .pedido-acoes { min-width: 170px; }
+  .acoes-menu-toggle { width: 30px; height: 30px; font-size: 16px; }
+  .acoes-menu { min-width: 170px; }
 }
 
 /* CONFIG */

@@ -704,7 +704,7 @@
             <div class="historico-filtros">
               <div class="form-grupo">
                 <label for="hv-busca">🔍 Cliente</label>
-                <input type="text" id="hv-busca" placeholder="Buscar por nome...">
+                <input type="text" id="hv-busca" placeholder="Buscar por nome ou telefone...">
               </div>
               <div class="form-grupo">
                 <label for="hv-status">Status</label>
@@ -1242,6 +1242,36 @@
     }
 
     // Valida e converte imagem para base64
+    // ============================================================
+    // Redimensiona e comprime uma imagem no navegador ANTES de virar
+    // base64 — uma foto de celular (3-8MB) costuma virar uns 100-300KB
+    // sem perda visível de qualidade na tela. Nunca aumenta a imagem,
+    // só diminui quando ela é maior que o necessário (larguraMax).
+    // ============================================================
+    function comprimirImagem(file, { larguraMax = 800, qualidade = 0.82, manterTransparencia = false } = {}) {
+      return new Promise((resolve, reject) => {
+        const leitor = new FileReader();
+        leitor.onerror = () => reject(new Error("Não foi possível ler o arquivo."));
+        leitor.onload = (e) => {
+          const img = new Image();
+          img.onerror = () => reject(new Error("Não foi possível processar a imagem."));
+          img.onload = () => {
+            const escala = Math.min(1, larguraMax / img.width);
+            const w = Math.round(img.width * escala);
+            const h = Math.round(img.height * escala);
+            const canvas = document.createElement("canvas");
+            canvas.width = w; canvas.height = h;
+            canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+            // PNG preserva transparência (logo), JPEG comprime bem mais
+            // (fotos de produto/banner não precisam de fundo transparente).
+            resolve(canvas.toDataURL(manterTransparencia ? "image/png" : "image/jpeg", qualidade));
+          };
+          img.src = e.target.result;
+        };
+        leitor.readAsDataURL(file);
+      });
+    }
+
     function _processarImagem(file) {
       const tipos  = ["image/jpeg","image/png","image/webp"];
       const maxMB  = 5;
@@ -1255,9 +1285,7 @@
         return;
       }
 
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const base64 = e.target.result;
+      comprimirImagem(file, { larguraMax: 800, qualidade: 0.82 }).then(base64 => {
         // Guarda base64 no campo oculto (compatível com o campo prod-imagem)
         document.getElementById("prod-imagem").value = base64;
         // Exibe preview
@@ -1265,8 +1293,7 @@
         document.getElementById("upload-preview").style.display = "block";
         document.getElementById("upload-placeholder").style.display = "none";
         document.getElementById("btn-remover-imagem").style.display = "block";
-      };
-      reader.readAsDataURL(file);
+      }).catch(() => alert("❌ Não foi possível processar essa imagem. Tente outra."));
     }
 
     // Remove imagem selecionada
@@ -1300,15 +1327,13 @@
     function _processarLogoUrl(file) {
       if (!["image/jpeg","image/png","image/webp"].includes(file.type)) { alert("❌ Use JPG, PNG ou WEBP."); return; }
       if (file.size > 5*1024*1024) { alert("❌ Máximo 5MB."); return; }
-      const r = new FileReader();
-      r.onload = e => {
-        document.getElementById("cfg-logoUrl").value = e.target.result;
-        document.getElementById("upload-logo-preview-img").src = e.target.result;
+      comprimirImagem(file, { larguraMax: 400, qualidade: 0.9, manterTransparencia: true }).then(base64 => {
+        document.getElementById("cfg-logoUrl").value = base64;
+        document.getElementById("upload-logo-preview-img").src = base64;
         document.getElementById("upload-logo-preview").style.display = "block";
         document.getElementById("upload-logo-placeholder").style.display = "none";
         document.getElementById("btn-remover-logo").style.display = "block";
-      };
-      r.readAsDataURL(file);
+      }).catch(() => alert("❌ Não foi possível processar essa imagem. Tente outra."));
     }
     function _removerLogoUrl() {
       document.getElementById("cfg-logoUrl").value = "";
@@ -1386,15 +1411,13 @@
     function _processarBanner(file) {
       if (!["image/jpeg","image/png","image/webp"].includes(file.type)) { alert("❌ Use JPG, PNG ou WEBP."); return; }
       if (file.size > 5*1024*1024) { alert("❌ Máximo 5MB."); return; }
-      const r = new FileReader();
-      r.onload = e => {
-        document.getElementById("cfg-banner").value = e.target.result;
-        document.getElementById("upload-banner-preview-img").src = e.target.result;
+      comprimirImagem(file, { larguraMax: 1200, qualidade: 0.8 }).then(base64 => {
+        document.getElementById("cfg-banner").value = base64;
+        document.getElementById("upload-banner-preview-img").src = base64;
         document.getElementById("upload-banner-preview").style.display = "block";
         document.getElementById("upload-banner-placeholder").style.display = "none";
         document.getElementById("btn-remover-banner").style.display = "block";
-      };
-      r.readAsDataURL(file);
+      }).catch(() => alert("❌ Não foi possível processar essa imagem. Tente outra."));
     }
     function _removerBanner() {
       document.getElementById("cfg-banner").value = "";
@@ -1541,9 +1564,12 @@
                         <button class="btn btn-primary btn-sm" onclick="salvarQuantidadeEstoqueBase('${eb.id}')">💾 Salvar</button>
                       </div>
                     </div>
-                    <div class="adm-item-acoes" style="gap:8px;flex-wrap:wrap;">
-                      <button class="btn btn-outline btn-sm" onclick="abrirModalNovoEstoqueBase('${eb.id}')">✏️ Editar</button>
-                      <button class="btn btn-outline btn-sm" style="color:#e55;" onclick="excluirEstoqueBase('${eb.id}')">🗑️</button>
+                    <div class="acoes-menu-wrap">
+                      <button class="acoes-menu-toggle" type="button" title="Mais opções" onclick="toggleMenuAcoes('estoquebase-${eb.id}')">⋮</button>
+                      <div class="acoes-menu" id="acoes-estoquebase-${eb.id}">
+                        <button class="btn-icon" onclick="abrirModalNovoEstoqueBase('${eb.id}')"><span>✏️</span><span class="acoes-menu-label">Editar</span></button>
+                        <button class="btn-icon btn-icon-del" onclick="excluirEstoqueBase('${eb.id}')"><span>🗑️</span><span class="acoes-menu-label">Excluir</span></button>
+                      </div>
                     </div>
                   </div>`;
               }).join("")

@@ -1542,7 +1542,7 @@ function renderizarAdmProdutos() {
           <span>${UTIL.sanitize(nomeCategoria)} <span style="font-weight:400;">(${itens.length})</span></span>
           ${cat ? `
           <span class="adm-cat-desconto" title="Desconto automático quando o cliente colocar essa quantidade (ou mais) de peças dessa categoria no carrinho">
-            <span style="text-transform:none;letter-spacing:0;">Desconto a partir de</span>
+            <span style="text-transform:none;letter-spacing:0;">A partir de</span>
             <input type="number" min="0" step="1" inputmode="numeric" placeholder="qtd"
               value="${cat.descontoQtdMinima > 0 ? cat.descontoQtdMinima : ""}"
               onclick="event.stopPropagation()"
@@ -1576,12 +1576,14 @@ function renderizarAdmProdutos() {
               }).join(" | ")}</small>` : ""}
               ${!p.ativo ? `<span class="badge-warning">Pausado</span>` : ""}
             </div>
-            <div class="adm-item-acoes">
-              <button class="btn-icon" onclick="editarProduto('${p.id}')" title="Editar">✏️</button>
-              <button class="btn-icon" onclick="duplicarProduto('${p.id}')" title="Duplicar">📋</button>
-              <button class="btn-icon" onclick="pausarProduto('${p.id}')" title="${p.ativo ? 'Pausar' : 'Reativar'}">${p.ativo ? "⏸" : "▶️"}</button>
-              <button class="btn-icon btn-icon-del" onclick="excluirProduto('${p.id}')" title="Excluir">🗑️</button>
-
+            <div class="acoes-menu-wrap">
+              <button class="acoes-menu-toggle" type="button" title="Mais opções" onclick="toggleMenuAcoes('produto-${p.id}')">⋮</button>
+              <div class="acoes-menu" id="acoes-produto-${p.id}">
+                <button class="btn-icon" onclick="editarProduto('${p.id}')" title="Editar"><span>✏️</span><span class="acoes-menu-label">Editar</span></button>
+                <button class="btn-icon" onclick="duplicarProduto('${p.id}')" title="Duplicar"><span>📋</span><span class="acoes-menu-label">Duplicar</span></button>
+                <button class="btn-icon" onclick="pausarProduto('${p.id}')" title="${p.ativo ? 'Pausar' : 'Reativar'}"><span>${p.ativo ? "⏸" : "▶️"}</span><span class="acoes-menu-label">${p.ativo ? "Pausar" : "Reativar"}</span></button>
+                <button class="btn-icon btn-icon-del" onclick="excluirProduto('${p.id}')" title="Excluir"><span>🗑️</span><span class="acoes-menu-label">Excluir</span></button>
+              </div>
             </div>
           </div>`).join("")}
       </div>`;
@@ -1841,10 +1843,13 @@ function renderizarAdmCategorias() {
         ${c.frase ? `<small class="cat-frase-adm">${UTIL.sanitize(c.frase)}</small>` : ""}
         ${!c.ativo ? `<span class="badge-warning">Pausada</span>` : ""}
       </div>
-      <div class="adm-item-acoes">
-        <button class="btn-icon" onclick="editarCategoria('${c.id}')">✏️</button>
-        <button class="btn-icon" onclick="pausarCategoria('${c.id}')">${c.ativo ? "⏸" : "▶️"}</button>
-        <button class="btn-icon btn-icon-del" onclick="excluirCategoria('${c.id}')">🗑️</button>
+      <div class="acoes-menu-wrap">
+        <button class="acoes-menu-toggle" type="button" title="Mais opções" onclick="toggleMenuAcoes('categoria-${c.id}')">⋮</button>
+        <div class="acoes-menu" id="acoes-categoria-${c.id}">
+          <button class="btn-icon" onclick="editarCategoria('${c.id}')"><span>✏️</span><span class="acoes-menu-label">Editar</span></button>
+          <button class="btn-icon" onclick="pausarCategoria('${c.id}')"><span>${c.ativo ? "⏸" : "▶️"}</span><span class="acoes-menu-label">${c.ativo ? "Pausar" : "Reativar"}</span></button>
+          <button class="btn-icon btn-icon-del" onclick="excluirCategoria('${c.id}')"><span>🗑️</span><span class="acoes-menu-label">Excluir</span></button>
+        </div>
       </div>
     </div>`).join("");
   iniciarDragDrop();
@@ -1910,10 +1915,13 @@ function renderizarAdmComplementos() {
         <small>+ ${UTIL.formatarMoeda(c.preco || 0)} | ${estoqueInfo}</small>
         ${!c.ativo ? `<span class="badge-warning">Pausado</span>` : ""}
       </div>
-      <div class="adm-item-acoes">
-        <button class="btn-icon" onclick="editarComplemento('${c.id}')">✏️</button>
-        <button class="btn-icon" onclick="pausarComplemento('${c.id}')">${c.ativo ? "⏸" : "▶️"}</button>
-        <button class="btn-icon btn-icon-del" onclick="excluirComplemento('${c.id}')">🗑️</button>
+      <div class="acoes-menu-wrap">
+        <button class="acoes-menu-toggle" type="button" title="Mais opções" onclick="toggleMenuAcoes('complemento-${c.id}')">⋮</button>
+        <div class="acoes-menu" id="acoes-complemento-${c.id}">
+          <button class="btn-icon" onclick="editarComplemento('${c.id}')"><span>✏️</span><span class="acoes-menu-label">Editar</span></button>
+          <button class="btn-icon" onclick="pausarComplemento('${c.id}')"><span>${c.ativo ? "⏸" : "▶️"}</span><span class="acoes-menu-label">${c.ativo ? "Pausar" : "Reativar"}</span></button>
+          <button class="btn-icon btn-icon-del" onclick="excluirComplemento('${c.id}')"><span>🗑️</span><span class="acoes-menu-label">Excluir</span></button>
+        </div>
       </div>
     </div>`;
   }).join("");
@@ -1995,22 +2003,22 @@ function cardPedido(p, somenteLeitura = false) {
   // No Histórico (somenteLeitura) não existe nenhum botão de ação — é uma
   // trilha de auditoria, apenas para consulta, para evitar fraude.
   //
-  // ALTERAÇÃO 1: os 4 botões continuam exatamente os mesmos (mesmas
-  // funções, mesmo onclick) — só que agora agrupados dentro de um menu
-  // (#pedido-acoes-ID) aberto pelo botão "⋮". Funciona igual em desktop
-  // e mobile — uma implementação só (ver toggleMenuPedidoAcoes e o CSS
-  // .pedido-acoes-toggle / .pedido-acoes), sem nenhuma duplicação.
+  // ALTERAÇÃO: os 4 botões continuam exatamente os mesmos (mesmas funções,
+  // mesmo onclick) — agrupados dentro de um menu "⋮". Usa o sistema
+  // genérico de menu (ver ACOES_MENU mais abaixo), o mesmo reaproveitado
+  // em Produtos/Categorias/Complementos/Estoque-base — uma implementação
+  // só pro sistema inteiro, sem duplicação.
   const botoesAcao = somenteLeitura ? "" : `
-        <button class="pedido-acoes-toggle" type="button" title="Mais opções"
-          onclick="event.stopPropagation(); toggleMenuPedidoAcoes('${p.id}')">⋮</button>
-        <div class="pedido-acoes" id="pedido-acoes-${p.id}">
+        <button class="acoes-menu-toggle" type="button" title="Mais opções"
+          onclick="event.stopPropagation(); toggleMenuAcoes('pedido-${p.id}')">⋮</button>
+        <div class="acoes-menu" id="acoes-pedido-${p.id}">
           ${btnPago}
           <button class="btn-icon" title="Adicionar produto ao pedido"
-            onclick="abrirAdicionarProdutoPedido('${p.id}')" style="background:rgba(91,45,142,.2);color:var(--primary,#5B2D8E);">➕</button>
+            onclick="abrirAdicionarProdutoPedido('${p.id}')" style="background:rgba(91,45,142,.2);color:var(--primary,#5B2D8E);"><span>➕</span><span class="acoes-menu-label">Adicionar produto</span></button>
           <button class="btn-icon" title="Imprimir comprovante"
-            onclick="imprimirPedido('${p.id}')" style="background:rgba(91,45,142,.12);">🖨️</button>
+            onclick="imprimirPedido('${p.id}')" style="background:rgba(91,45,142,.12);"><span>🖨️</span><span class="acoes-menu-label">Imprimir</span></button>
           <button class="btn-icon btn-icon-del" title="Excluir pedido e estornar estoque"
-            onclick="confirmarExcluirPedido('${p.id}')">🗑️</button>
+            onclick="confirmarExcluirPedido('${p.id}')"><span>🗑️</span><span class="acoes-menu-label">Excluir</span></button>
         </div>`;
 
   return `
@@ -2024,7 +2032,7 @@ function cardPedido(p, somenteLeitura = false) {
         ${p.cliente?.telefone ? `<small style="color:var(--text-muted); display:block;"> ${UTIL.sanitize(p.cliente.telefone)}</small>` : ""}
         <small style="color:var(--text-muted); display:block;">${UTIL.formatarData(p.data)}</small>
       </div>
-      <div class="pedido-header-acoes" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+      <div class="acoes-menu-wrap" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
         ${sinoNotificacao}
         <span class="badge-${corBadge}">${p.status}</span>
         ${p.origem === "manual" ? `<span class="badge-primary" title="Venda registrada pelo administrador (balcão)">🧑‍💼 Presencial</span>` : ""}
@@ -2050,27 +2058,31 @@ function cardPedido(p, somenteLeitura = false) {
 }
 
 // ============================================================
-// ALTERAÇÃO 1 — Menu de ações do pedido (desktop + responsivo)
+// Menu de ações "⋮" — sistema ÚNICO e genérico (desktop + responsivo)
 // ============================================================
-// Uma implementação única (não tem versão separada pra desktop e outra
-// pra mobile) — o CSS é que cuida do tamanho/posição diferente em cada
-// tela (ver .pedido-acoes-toggle e .pedido-acoes no style.css). Cada
-// pedido tem seu próprio menu (id="pedido-acoes-ID"), então abrir um
-// nunca mistura ou interfere no de outro pedido.
-function toggleMenuPedidoAcoes(id) {
-  const menu = document.getElementById(`pedido-acoes-${id}`);
+// Reaproveitado por TODOS os módulos que têm vários botões de ação por
+// item: Pedidos Recebidos, Produtos Cadastrados, Categorias Cadastradas,
+// Acompanhamentos Cadastrados e Estoque-Base. Uma implementação só —
+// o CSS (.acoes-menu-toggle / .acoes-menu) é que ajusta tamanho/posição
+// pra tela pequena, o comportamento é idêntico em qualquer tela.
+//
+// Cada item usa um id único no formato "prefixo-id" (ex: "pedido-abc123",
+// "produto-xyz789") — então o menu de um item nunca mistura ou interfere
+// no de outro, mesmo entre módulos diferentes.
+function toggleMenuAcoes(id) {
+  const menu = document.getElementById(`acoes-${id}`);
   if (!menu) return;
   const jaAberto = menu.classList.contains("aberto");
-  // Só um menu aberto por vez — abrir um fecha qualquer outro que já
-  // estivesse aberto (de outro pedido).
-  document.querySelectorAll(".pedido-acoes.aberto").forEach(el => el.classList.remove("aberto"));
-  document.querySelectorAll(".pedido-acoes-toggle.ativo").forEach(el => el.classList.remove("ativo"));
+  // Só um menu aberto por vez no sistema inteiro — abrir um fecha
+  // qualquer outro que já estivesse aberto (mesmo de outro módulo).
+  document.querySelectorAll(".acoes-menu.aberto").forEach(el => el.classList.remove("aberto"));
+  document.querySelectorAll(".acoes-menu-toggle.ativo").forEach(el => el.classList.remove("ativo"));
   if (!jaAberto) {
     menu.classList.add("aberto");
-    menu.closest(".pedido-header-acoes")?.querySelector(".pedido-acoes-toggle")?.classList.add("ativo");
+    menu.closest(".acoes-menu-wrap")?.querySelector(".acoes-menu-toggle")?.classList.add("ativo");
   }
 }
-window.toggleMenuPedidoAcoes = toggleMenuPedidoAcoes;
+window.toggleMenuAcoes = toggleMenuAcoes;
 
 // Fecha ao clicar fora do menu, e fecha automaticamente assim que uma das
 // opções dentro dele é escolhida (a função do botão já rodou nesse mesmo
@@ -2078,22 +2090,22 @@ window.toggleMenuPedidoAcoes = toggleMenuPedidoAcoes;
 // Funciona igual com clique de mouse e toque no celular ("click" cobre os
 // dois, o navegador dispara "click" também depois de um toque/tap).
 document.addEventListener("click", (e) => {
-  const dentroDoToggle = e.target.closest(".pedido-acoes-toggle");
+  const dentroDoToggle = e.target.closest(".acoes-menu-toggle");
   if (dentroDoToggle) return; // o próprio botão de abrir/fechar já cuida disso
 
-  const menuClicado = e.target.closest(".pedido-acoes");
+  const menuClicado = e.target.closest(".acoes-menu");
   if (menuClicado) {
     // Clicou numa opção dentro do menu → executa a ação (já rodou) e fecha só esse menu
     if (e.target.closest("button")) {
       menuClicado.classList.remove("aberto");
-      menuClicado.closest(".pedido-header-acoes")?.querySelector(".pedido-acoes-toggle")?.classList.remove("ativo");
+      menuClicado.closest(".acoes-menu-wrap")?.querySelector(".acoes-menu-toggle")?.classList.remove("ativo");
     }
     return;
   }
 
   // Clicou em qualquer lugar fora de todo mundo → fecha tudo que estiver aberto
-  document.querySelectorAll(".pedido-acoes.aberto").forEach(el => el.classList.remove("aberto"));
-  document.querySelectorAll(".pedido-acoes-toggle.ativo").forEach(el => el.classList.remove("ativo"));
+  document.querySelectorAll(".acoes-menu.aberto").forEach(el => el.classList.remove("aberto"));
+  document.querySelectorAll(".acoes-menu-toggle.ativo").forEach(el => el.classList.remove("ativo"));
 });
 
 function renderizarAdmPedidos() {

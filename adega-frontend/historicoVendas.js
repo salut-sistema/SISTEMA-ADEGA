@@ -24,7 +24,16 @@ const HISTORICO = {
     const f = this.filtros;
     return [...(STATE.get("pedidos") || [])]
       .filter(p => {
-        if (f.texto && !(p.cliente?.nome || "").toLowerCase().includes(f.texto.toLowerCase())) return false;
+        if (f.texto) {
+          const termo = f.texto.toLowerCase().trim();
+          const nomeBate = (p.cliente?.nome || "").toLowerCase().includes(termo);
+          // Busca por telefone: compara só os dígitos, pra funcionar tanto
+          // digitando com pontuação ("(11) 99999-9999") quanto sem.
+          const digitosTermo = termo.replace(/\D/g, "");
+          const telefoneBate = digitosTermo.length >= 3 &&
+            (p.cliente?.telefone || "").replace(/\D/g, "").includes(digitosTermo);
+          if (!nomeBate && !telefoneBate) return false;
+        }
         if (f.status !== "todos" && p.status !== f.status) return false;
         if (f.origem !== "todos") {
           const origemPedido = p.origem === "manual" ? "manual" : "loja";

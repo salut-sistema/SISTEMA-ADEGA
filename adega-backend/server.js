@@ -14,6 +14,43 @@ const routes   = require("./routes/index");
 const app  = express();
 const PORT = process.env.PORT || 3001;
 
+// ============================================================
+// 🔍 MONITOR TEMPORÁRIO DE MEMÓRIA — SÓ PARA DIAGNÓSTICO
+// ============================================================
+// Objetivo: descobrir, pelos logs do Render, em que momento o uso de
+// memória do processo Node sobe e se aproxima do limite do plano Free
+// (512MB). Não muda nenhuma rota, nenhuma funcionalidade, não aumenta
+// nem diminui nenhum limite de memória, não mexe no MongoDB — só lê e
+// imprime números no console, em intervalos regulares.
+//
+// Pode ser removido a qualquer momento apagando este bloco (entre os
+// comentários de INÍCIO e FIM) sem afetar nada mais no sistema.
+const MONITOR_MEMORIA_LIMITE_MB = 512;     // limite do plano Free do Render
+const MONITOR_MEMORIA_INTERVALO_MS = 30000; // a cada 30 segundos
+
+function _logMemoria(momento = "") {
+  const uso = process.memoryUsage();
+  const paraMB = (bytes) => (bytes / 1024 / 1024).toFixed(1);
+  const percentualDoLimite = ((uso.rss / (MONITOR_MEMORIA_LIMITE_MB * 1024 * 1024)) * 100).toFixed(1);
+
+  console.log(
+    `📊 [Monitor de Memória${momento ? " — " + momento : ""}] ` +
+    `RSS: ${paraMB(uso.rss)}MB | heapUsed: ${paraMB(uso.heapUsed)}MB | ` +
+    `heapTotal: ${paraMB(uso.heapTotal)}MB | ~${percentualDoLimite}% do limite de ${MONITOR_MEMORIA_LIMITE_MB}MB`
+  );
+}
+
+// Mensagem assim que o processo sobe (antes até de conectar no banco) —
+// útil pra saber qual é o "chão" de memória do sistema, ainda sem nenhuma
+// requisição atendida.
+_logMemoria("processo iniciando");
+
+// Log contínuo, em intervalos regulares, enquanto o servidor estiver no ar.
+setInterval(() => _logMemoria(), MONITOR_MEMORIA_INTERVALO_MS);
+// ============================================================
+// 🔍 FIM DO MONITOR TEMPORÁRIO DE MEMÓRIA
+// ============================================================
+
 // ── CORS ─────────────────────────────────────────────────────
 // Em produção, FRONTEND_URL deve ser a URL da Vercel
 // Ex: FRONTEND_URL=https://minha-adega.vercel.app
@@ -86,6 +123,10 @@ mongoose.connect(process.env.MONGODB_URI)
     app.listen(PORT, () => {
       console.log(`🚀 Servidor em http://localhost:${PORT}`);
       console.log(`📡 API em http://localhost:${PORT}/api`);
+      // Segundo ponto de referência do monitor de memória (ver bloco no
+      // topo do arquivo) — compara com o log de "processo iniciando" pra
+      // ver quanto a conexão com o Mongo + as migrações consumiram.
+      _logMemoria("servidor pronto e escutando");
     });
   })
   .catch(e => {
