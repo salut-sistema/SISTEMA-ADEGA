@@ -6,10 +6,11 @@ const dns = require("dns");
 dns.setServers(["8.8.8.8", "8.8.4.4"]);
 
 require("dotenv").config();
-const express  = require("express");
-const mongoose = require("mongoose");
-const cors     = require("cors");
-const routes   = require("./routes/index");
+const express     = require("express");
+const mongoose    = require("mongoose");
+const cors        = require("cors");
+const compression = require("compression");
+const routes      = require("./routes/index");
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -57,6 +58,14 @@ setInterval(() => _logMemoria(), MONITOR_MEMORIA_INTERVALO_MS);
 const allowedOrigins = process.env.FRONTEND_URL
   ? process.env.FRONTEND_URL.split(",").map(u => u.trim())
   : ["*"];
+
+// ── Compressão gzip ──────────────────────────────────────────
+// Passo 2 do plano de leveza: comprime toda resposta da API antes de
+// enviar pro navegador — JSON com texto/base64 costuma comprimir muito
+// bem (70-80% menor), sem mudar nenhuma rota nem o formato dos dados,
+// o navegador descomprime automaticamente sem precisar de nada especial
+// no frontend.
+app.use(compression());
 
 app.use(cors({
   origin: (origin, cb) => {
