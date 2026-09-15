@@ -70,6 +70,47 @@ router.get("/loja/:slug", async (req, res) => {
   } catch (e) { err(res, e.message); }
 });
 
+// GET /api/loja/:slug/estado — Passo 4: uma "assinatura" leve do catálogo
+// (contagem + data da última alteração de cada coleção), sem trazer
+// produtos/imagens nenhuma. O polling da loja usa isso pra saber se algo
+// mudou de verdade antes de baixar o catálogo inteiro de novo — evita
+// rebaixar tudo (com todas as fotos) a cada 30s à toa, pra cada cliente
+// com a loja aberta.
+router.get("/loja/:slug/estado", async (req, res) => {
+  try {
+    const empresa = EMPRESAS.find(e => e.slug === req.params.slug);
+    if (!empresa || !empresaValida(empresa)) return err(res, "Loja não encontrada", 404);
+    const eId = empresa.empresaId;
+
+    const [
+      produtosCount, produtoRecente,
+      categoriasCount, categoriaRecente,
+      complementosCount, complementoRecente,
+      config,
+    ] = await Promise.all([
+      Produto.countDocuments({ empresaId: eId }),
+      Produto.findOne({ empresaId: eId }).sort({ updatedAt: -1 }).select("updatedAt").lean(),
+      Categoria.countDocuments({ empresaId: eId }),
+      Categoria.findOne({ empresaId: eId }).sort({ updatedAt: -1 }).select("updatedAt").lean(),
+      Complemento.countDocuments({ empresaId: eId }),
+      Complemento.findOne({ empresaId: eId }).sort({ updatedAt: -1 }).select("updatedAt").lean(),
+      Config.findOne({ empresaId: eId }).select("updatedAt").lean(),
+    ]);
+
+    // Junta tudo numa única "assinatura" — muda se qualquer uma dessas
+    // coisas mudar (produto editado/criado, categoria pausada, config
+    // da loja alterada, etc.)
+    const assinatura = [
+      produtosCount, produtoRecente?.updatedAt || "",
+      categoriasCount, categoriaRecente?.updatedAt || "",
+      complementosCount, complementoRecente?.updatedAt || "",
+      config?.updatedAt || "",
+    ].join("|");
+
+    ok(res, { assinatura });
+  } catch (e) { err(res, e.message); }
+});
+
 // POST /api/pedidos/publico/:slug — cliente finaliza pedido pelo link da loja
 // Rota pública que cria pedido e desconta estoque sem precisar de token de admin
 router.post("/pedidos/publico/:slug", async (req, res) => {
@@ -517,6 +558,18 @@ router.put("/pedidos/:id/status", async (req, res) => {
 // IMPORTANTE: o registro NUNCA é removido do banco. Ele some da aba "Pedidos
 // Recebidos", mas continua existindo (com excluido:true) para a aba "Histórico
 // de Vendas", que funciona como trilha de auditoria e controle de fraude.
+// DELETE /api/pedidos/historico — apaga TODO o histórico de vendas (todos
+// os pedidos) da empresa, de verdade, no banco. Diferente do DELETE de um
+// pedido específico (que é soft-delete, pra manter auditoria), aqui é uma
+// limpeza total e definitiva, usada pelo botão "Limpar Histórico de
+// Vendas" — NÃO mexe em produtos, categorias, complementos nem estoque.
+router.delete("/pedidos/historico", async (req, res) => {
+  try {
+    const resultado = await Pedido.deleteMany({ empresaId: req.empresaId });
+    ok(res, { apagados: resultado.deletedCount });
+  } catch (e) { err(res, e.message); }
+});
+
 router.delete("/pedidos/:id", async (req, res) => {
   try {
     const pedido = await Pedido.findOne({ empresaId: req.empresaId, id: req.params.id });

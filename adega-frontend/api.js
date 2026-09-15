@@ -87,7 +87,12 @@ function _qs(params = {}) {
 
 // ── APIs disponíveis ─────────────────────────────────────────
 const API_AUTH   = { async login(l,s) { return apiFetch("POST","/login",{login:l,senha:s},true); } };
-const API_LOJA   = { async carregar(slug) { return apiFetch("GET",`/loja/${slug}`,null,true); } };
+const API_LOJA   = {
+  async carregar(slug) { return apiFetch("GET",`/loja/${slug}`,null,true); },
+  // Passo 4: assinatura leve do catálogo — usada pelo polling pra saber
+  // se vale a pena baixar tudo de novo (com imagens) ou não.
+  async estado(slug)   { return apiFetch("GET",`/loja/${slug}/estado`,null,true); },
+};
 const API_SISTEMA = { async somConfig() { return apiFetch("GET","/som-config",null,true); } };
 
 const API_PRODUTOS = {
@@ -130,6 +135,9 @@ const API_PEDIDOS = {
   async atualizarStatus(id,s) { return apiFetch("PUT",   `/pedidos/${id}/status`,{status:s}); },
   async editar(id,d)          { return apiFetch("PUT",   `/pedidos/${id}`, d); },
   async excluir(id)           { return apiFetch("DELETE",`/pedidos/${id}`); },
+  // Apaga TODO o histórico de vendas da empresa, de verdade, no banco —
+  // usado pelo botão "Limpar Histórico de Vendas" (Configurações).
+  async limparHistorico()     { return apiFetch("DELETE",`/pedidos/historico`); },
 };
 
 const API_CONFIG    = {
@@ -384,8 +392,25 @@ let _pollingLojaInterval = null;
 function _iniciarPollingLoja(slug) {
   if (_pollingLojaInterval || !slug) return;
 
+  // Guarda a última assinatura conhecida — inicia vazia, então a primeira
+  // checagem do intervalo sempre vai detectar "mudança" na primeira vez
+  // (inofensivo: só significa que compara com string vazia uma vez).
+  let ultimaAssinaturaLoja = null;
+
   _pollingLojaInterval = setInterval(async () => {
     try {
+      // Passo 4: checagem leve primeiro (só números/datas, sem produtos
+      // nem imagens) — só busca o catálogo inteiro de novo quando a
+      // assinatura muda de verdade. Antes, TODO cliente com a loja aberta
+      // baixava produtos+categorias+complementos+imagens a cada 30s,
+      // mesmo sem nada ter mudado.
+      const { assinatura } = await API_LOJA.estado(slug);
+
+      if (ultimaAssinaturaLoja === null) { ultimaAssinaturaLoja = assinatura; return; }
+      if (assinatura === ultimaAssinaturaLoja) return; // nada mudou, não baixa nada
+
+      ultimaAssinaturaLoja = assinatura;
+
       const loja = await API_LOJA.carregar(slug);
       STATE.set("produtos",     loja.produtos     || []);
       STATE.set("categorias",   loja.categorias   || []);
@@ -398,7 +423,7 @@ function _iniciarPollingLoja(slug) {
     } catch (e) {
       console.warn("[Polling Loja] Erro:", e.message);
     }
-  }, 30000); // a cada 30 segundos
+  }, 30000); // verifica a cada 30 segundos (a checagem em si é leve)
 }
 
 // ============================================================

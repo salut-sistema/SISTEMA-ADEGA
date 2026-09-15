@@ -66,18 +66,7 @@ const EMPRESAS = [
   },
 
   {
-    empresaId:  "ma-1",
-    nome:       "marcia sampaio",
-    login:      "ma",
-    senha:      "ma",
-    ativo:      true,
-    vencimento: null,
-    endereco:   "",                          // endereço da empresa
-    slug:       "Point-morenas",          // link exclusivo: /loja/bomboniere-maria
-  },
-
-  {
-    empresaId:  "salut-1",
+    empresaId:  "salut-001",
     nome:       "salut",
     login:      "salut",
     senha:      "salut",
@@ -85,6 +74,17 @@ const EMPRESAS = [
     vencimento: null,
     endereco:   "",                          // endereço da empresa
     slug:       "salut",          // link exclusivo: /loja/bomboniere-maria
+  },
+
+  {
+    empresaId:  "leandro-1",
+    nome:       "leandro nascimento",
+    login:      "leandro",
+    senha:      "leandro",
+    ativo:      true,
+    vencimento: "2026-08-11",
+    endereco:   "",                          // endereço da empresa
+    slug:       "pizzaria",          // link exclusivo: /loja/bomboniere-maria
   },
 
 
@@ -106,7 +106,7 @@ const EMPRESAS = [
 // altere APENAS o valor abaixo. Nenhum outro arquivo precisa
 // ser modificado.
 // ============================================================
-const SENHA_MASTER = "1234";
+const SENHA_MASTER = "12";
 
 // ============================================================
 // SOM_NOTIFICACAO_PEDIDO — Som que toca no painel admin quando

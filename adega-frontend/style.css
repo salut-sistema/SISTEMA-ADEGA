@@ -936,15 +936,15 @@ body.loja-carregando > *:not(#loja-loading-overlay) {
 }
 
 .dash-grid {
-  display: grid;
-  grid-template-columns: 1fr;
+  display: flex;
+  flex-wrap: wrap;
   gap: 20px;
 }
-@media (min-width: 768px) { .dash-grid { grid-template-columns: repeat(3, 1fr); } }
-
 .dash-widget {
+  flex: 1 1 280px; /* cresce/encolhe pra preencher a linha; quebra pra baixo só se não couber */
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 20px;
+  min-width: 0; /* evita conteúdo forçar o card mais largo que devia */
 }
 .dash-widget-titulo {
   font-size: 14px; font-weight: 700; margin-bottom: 16px;
@@ -1381,26 +1381,9 @@ input[type="color"] {
 
 /* ============================================================
    PEDIDO — Botão excluir
+   (removido: o botão hoje vive dentro do menu "⋮" — o estilo dele já é
+   cuidado de forma genérica por .acoes-menu .btn-icon, ver mais acima)
    ============================================================ */
-.pedido-card .btn-icon-del {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--danger);
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  font-size: 14px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: var(--transition);
-}
-.pedido-card .btn-icon-del:hover {
-  background: var(--danger);
-  color: #fff;
-  border-color: var(--danger);
-}
 
 /* ============================================================
    CONTROLE DE ESTOQUE — Input inline

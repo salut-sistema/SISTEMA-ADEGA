@@ -993,8 +993,16 @@ const DASHBOARD = {
         </div>`;
     }
 
+    const widgetVenc = document.getElementById("dash-widget-vencendo");
     const venc = document.getElementById("lista-vencendo");
-    if (venc) {
+    // Card só aparece se ALGUM produto tiver validade cadastrada — se o
+    // admin nunca usa esse campo, o card nem aparece na tela (em vez de
+    // ficar sempre visível com "Nenhum produto vencendo."). Como
+    // STATE.produtos só traz os produtos da própria empresa logada, isso
+    // já é automaticamente individual por admin/loja.
+    const usaValidade = (STATE.get("produtos") || []).some(p => p.validade);
+    if (widgetVenc) widgetVenc.style.display = usaValidade ? "" : "none";
+    if (venc && usaValidade) {
       const lv = PRODUTOS.vencendo();
       venc.innerHTML = lv.length
         ? lv.map(p => `<div class="alerta-item">

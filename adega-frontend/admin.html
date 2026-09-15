@@ -205,7 +205,7 @@
             <div class="dash-widget-titulo">⚠️ Estoque Baixo</div>
             <div id="lista-estoque-baixo"><p class="sem-dados">Nenhum alerta.</p></div>
           </div>
-          <div class="dash-widget" onclick="mostrarSecao('sec-produtos');TABS.ir('sec-produtos','tab-produtos-lista')" style="cursor:pointer;" title="Ver produtos vencendo">
+          <div class="dash-widget" id="dash-widget-vencendo" onclick="mostrarSecao('sec-produtos');TABS.ir('sec-produtos','tab-produtos-lista')" style="cursor:pointer;" title="Ver produtos vencendo">
             <div class="dash-widget-titulo">⏰ Vencendo em Breve</div>
             <div id="lista-vencendo"><p class="sem-dados">Nenhum produto vencendo.</p></div>
           </div>
@@ -1009,7 +1009,7 @@
             <div style="display:flex;gap:12px;flex-wrap:wrap;">
               <button class="btn btn-outline btn-sm" onclick="exportarDados()">⬇️ Exportar Backup</button>
               <button class="btn btn-outline btn-sm" onclick="importarDados()">⬆️ Importar Backup</button>
-              <button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="limparDados()">🗑️ Limpar Todos os Dados</button>
+              <button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="limparHistoricoVendas()">🗑️ Limpar Histórico de Vendas</button>
             </div>
             <input type="file" id="import-file" accept=".json" style="display:none" onchange="processarImport(this)">
           </div>
@@ -1174,19 +1174,23 @@
     }
     window.processarImport = processarImport;
 
-    function limparDados() {
-      MODAL.pedirSenha("Limpar Todos os Dados", () => {
-        MODAL.confirmar("⚠️ ATENÇÃO: Isso irá apagar TODOS os produtos, categorias e pedidos. Esta ação não pode ser desfeita!", () => {
-          STATE.set("produtos", []); STATE.set("categorias", []);
-          STATE.set("complementos", []); STATE.set("pedidos", []);
-          STORAGE.salvarProdutos(); STORAGE.salvarCategorias();
-          STORAGE.salvarComplementos(); STORAGE.salvarPedidos();
-          MODAL.sucesso("Todos os dados foram apagados.");
-          mostrarSecao("sec-dashboard");
+    async function limparHistoricoVendas() {
+      MODAL.pedirSenha("Limpar Histórico de Vendas", () => {
+        MODAL.confirmar("⚠️ ATENÇÃO: Isso irá apagar TODO o histórico de vendas (todos os pedidos, de todos os status). Produtos, categorias, complementos e estoque NÃO serão afetados. Esta ação não pode ser desfeita!", async () => {
+          try {
+            const resposta = await API_PEDIDOS.limparHistorico();
+            STATE.set("pedidos", []);
+            STORAGE.salvarPedidos();
+            MODAL.sucesso(`Histórico de vendas apagado (${resposta.apagados} pedido(s)).`);
+            mostrarSecao("sec-dashboard");
+            if (typeof DASHBOARD !== "undefined") DASHBOARD.atualizar();
+          } catch (e) {
+            MODAL.erro("Erro ao limpar histórico: " + e.message);
+          }
         });
       });
     }
-    window.limparDados = limparDados;
+    window.limparHistoricoVendas = limparHistoricoVendas;
   </script>
 
   <!-- ============================================================
