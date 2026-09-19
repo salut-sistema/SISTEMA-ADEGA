@@ -3,6 +3,7 @@
 // Todas as operações filtradas por empresaId.
 // ============================================================
 const express     = require("express");
+const mongoose    = require("mongoose");
 const router      = express.Router();
 const { Produto, EstoqueBase, MovimentacaoEstoqueBase, Categoria, Complemento, Pedido, Config, Contador } = require("../models");
 const { authMiddleware, EMPRESAS, empresaValida } = require("../middleware/auth");
@@ -18,11 +19,11 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 // ── Gerador do número sequencial do pedido (por empresa) ─────
 // Atômico via $inc — seguro mesmo com pedidos simultâneos, e nunca
 // repete ou reaproveita números (mesmo que um pedido seja excluído depois).
-async function proximoNumeroPedido(empresaId) {
+async function proximoNumeroPedido(empresaId, session = null) {
   const contador = await Contador.findOneAndUpdate(
     { empresaId, tipo: "pedido" },
     { $inc: { valor: 1 } },
-    { upsert: true, new: true }
+    { upsert: true, new: true, session }
   );
   return contador.valor;
 }
@@ -114,25 +115,51 @@ router.get("/loja/:slug/estado", async (req, res) => {
 // POST /api/pedidos/publico/:slug — cliente finaliza pedido pelo link da loja
 // Rota pública que cria pedido e desconta estoque sem precisar de token de admin
 router.post("/pedidos/publico/:slug", async (req, res) => {
+  const session = await mongoose.startSession();
   try {
     const empresa = EMPRESAS.find(e => e.slug === req.params.slug);
     if (!empresa || !empresaValida(empresa)) return err(res, "Loja não encontrada", 404);
 
     const eId = empresa.empresaId;
+    let pedidoCriado;
 
-    // Valida estoque disponível ANTES de criar o pedido — impede vender
-    // além do que existe (evita a "venda fantasma" no histórico).
-    const errosEstoque = await _validarEstoqueSuficiente(eId, req.body.itens || []);
-    if (errosEstoque.length) return err(res, "Estoque insuficiente: " + errosEstoque.join(" | "), 409);
+    // Correção da brecha de compra duplicada: validar, criar o pedido e
+    // descontar o estoque agora acontece tudo dentro de UMA transação
+    // atômica só. Se duas pessoas comprarem a última peça quase ao mesmo
+    // tempo, o MongoDB detecta esse conflito de escrita e o
+    // session.withTransaction() automaticamente REPETE essa função do
+    // zero pra quem perdeu a corrida — na repetição, a validação já
+    // enxerga o estoque atualizado (zerado pela primeira compra) e barra
+    // corretamente a segunda pessoa. Nunca fica pedido "pela metade": ou
+    // o pedido inteiro + desconto de estoque acontece, ou nada acontece.
+    try {
+      await session.withTransaction(async () => {
+        const errosEstoque = await _validarEstoqueSuficiente(eId, req.body.itens || [], session);
+        if (errosEstoque.length) {
+          const erro = new Error(errosEstoque.join(" | "));
+          erro.estoqueInsuficiente = true;
+          throw erro; // withTransaction() aborta sozinho ao receber um throw
+        }
 
-    const numeroPedido = await proximoNumeroPedido(eId);
-    const pedido = await Pedido.create({ ...req.body, empresaId: eId, numeroPedido });
+        const numeroPedido = await proximoNumeroPedido(eId, session);
+        const criados = await Pedido.create([{ ...req.body, empresaId: eId, numeroPedido }], { session });
+        pedidoCriado = criados[0];
 
-    // Desconta estoque de cada item do pedido
-    await _descontarEstoque(eId, pedido.itens);
+        await _descontarEstoque(eId, pedidoCriado.itens, session);
+      });
+    } catch (erroTransacao) {
+      if (erroTransacao.estoqueInsuficiente) {
+        return err(res, "Estoque insuficiente: " + erroTransacao.message, 409);
+      }
+      throw erroTransacao;
+    }
 
-    ok(res, pedido);
-  } catch (e) { err(res, e.message); }
+    ok(res, pedidoCriado);
+  } catch (e) {
+    err(res, e.message);
+  } finally {
+    await session.endSession();
+  }
 });
 
 // ── A partir daqui todas as rotas exigem autenticação ────────
@@ -497,49 +524,86 @@ router.get("/pedidos/novos", async (req, res) => {
 
 // POST /api/pedidos — cria pedido e desconta estoque automaticamente
 router.post("/pedidos", async (req, res) => {
+  const session = await mongoose.startSession();
   try {
-    const errosEstoque = await _validarEstoqueSuficiente(req.empresaId, req.body.itens || []);
-    if (errosEstoque.length) return err(res, "Estoque insuficiente: " + errosEstoque.join(" | "), 409);
+    let pedidoCriado, afetados;
 
-    const numeroPedido = await proximoNumeroPedido(req.empresaId);
-    const pedido = await Pedido.create({ ...req.body, empresaId: req.empresaId, numeroPedido });
-    const afetados = await _descontarEstoque(req.empresaId, pedido.itens);
+    try {
+      await session.withTransaction(async () => {
+        const errosEstoque = await _validarEstoqueSuficiente(req.empresaId, req.body.itens || [], session);
+        if (errosEstoque.length) {
+          const erro = new Error(errosEstoque.join(" | "));
+          erro.estoqueInsuficiente = true;
+          throw erro;
+        }
+
+        const numeroPedido = await proximoNumeroPedido(req.empresaId, session);
+        const criados = await Pedido.create([{ ...req.body, empresaId: req.empresaId, numeroPedido }], { session });
+        pedidoCriado = criados[0];
+
+        afetados = await _descontarEstoque(req.empresaId, pedidoCriado.itens, session);
+      });
+    } catch (erroTransacao) {
+      if (erroTransacao.estoqueInsuficiente) {
+        return err(res, "Estoque insuficiente: " + erroTransacao.message, 409);
+      }
+      throw erroTransacao;
+    }
+
     // Etapa 3: devolve o pedido criado junto com o que foi alterado no
     // estoque — o frontend usa isso pra atualizar a tela sem precisar
     // baixar produtos/estoque-base inteiros de novo.
-    ok(res, { pedido, ...afetados });
-  } catch (e) { err(res, e.message); }
+    ok(res, { pedido: pedidoCriado, ...afetados });
+  } catch (e) {
+    err(res, e.message);
+  } finally {
+    await session.endSession();
+  }
 });
 
 // PUT /api/pedidos/:id — edita itens/total do pedido e reconcilia estoque
 router.put("/pedidos/:id", async (req, res) => {
+  const session = await mongoose.startSession();
   try {
-    const pedidoAntigo = await Pedido.findOne({ empresaId: req.empresaId, id: req.params.id });
-    if (!pedidoAntigo) return err(res, "Pedido não encontrado", 404);
+    let pedidoAntigo, afetadosRepor, afetadosDescontar;
 
-    // Reverte estoque dos itens antigos
-    const afetadosRepor = await _reporEstoque(req.empresaId, pedidoAntigo.itens || []);
+    await session.withTransaction(async () => {
+      pedidoAntigo = await Pedido.findOne({ empresaId: req.empresaId, id: req.params.id }).session(session);
+      if (!pedidoAntigo) {
+        const erro = new Error("Pedido não encontrado");
+        erro.naoEncontrado = true;
+        throw erro;
+      }
 
-    // Aplica campos editáveis
-    const { itens, total, subtotal, taxaEntrega, status, formaPagamento, endereco } = req.body;
-    if (itens !== undefined)          pedidoAntigo.itens          = itens;
-    if (total !== undefined)          pedidoAntigo.total          = total;
-    if (subtotal !== undefined)       pedidoAntigo.subtotal       = subtotal;
-    if (taxaEntrega !== undefined)    pedidoAntigo.taxaEntrega    = taxaEntrega;
-    if (status !== undefined)         pedidoAntigo.status         = status;
-    if (formaPagamento !== undefined) pedidoAntigo.formaPagamento = formaPagamento;
-    if (endereco !== undefined)       pedidoAntigo.endereco       = endereco;
+      // Reverte estoque dos itens antigos
+      afetadosRepor = await _reporEstoque(req.empresaId, pedidoAntigo.itens || [], session);
 
-    await pedidoAntigo.save();
+      // Aplica campos editáveis
+      const { itens, total, subtotal, taxaEntrega, status, formaPagamento, endereco } = req.body;
+      if (itens !== undefined)          pedidoAntigo.itens          = itens;
+      if (total !== undefined)          pedidoAntigo.total          = total;
+      if (subtotal !== undefined)       pedidoAntigo.subtotal       = subtotal;
+      if (taxaEntrega !== undefined)    pedidoAntigo.taxaEntrega    = taxaEntrega;
+      if (status !== undefined)         pedidoAntigo.status         = status;
+      if (formaPagamento !== undefined) pedidoAntigo.formaPagamento = formaPagamento;
+      if (endereco !== undefined)       pedidoAntigo.endereco       = endereco;
 
-    // Aplica estoque dos novos itens
-    const afetadosDescontar = await _descontarEstoque(req.empresaId, pedidoAntigo.itens || []);
+      await pedidoAntigo.save({ session });
+
+      // Aplica estoque dos novos itens
+      afetadosDescontar = await _descontarEstoque(req.empresaId, pedidoAntigo.itens || [], session);
+    });
 
     // Etapa 3: junta o que foi tocado nas duas operações (repor + descontar)
     // e devolve junto com o pedido — evita o frontend ter que recarregar
     // produtos/estoque-base inteiros depois de editar um pedido.
     ok(res, { pedido: pedidoAntigo, ..._mergeAfetados(afetadosRepor, afetadosDescontar) });
-  } catch (e) { err(res, e.message); }
+  } catch (e) {
+    if (e.naoEncontrado) return err(res, e.message, 404);
+    err(res, e.message);
+  } finally {
+    await session.endSession();
+  }
 });
 
 // PUT /api/pedidos/:id/status — atualiza status do pedido
@@ -647,7 +711,12 @@ router.get("/dashboard", async (req, res) => {
             pedidosAno:        { $sum: { $cond: [_faixa(inicioAno, fimAno), 1, 0] } },
         } },
       ]),
-      Produto.find({ empresaId: req.empresaId }).lean(),
+      // Passo 3 (leveza): só os campos que este cálculo usa de verdade —
+      // sem "imagem" (base64), que era trazida à toa em toda consulta do
+      // Dashboard e nunca é exibida aqui.
+      Produto.find({ empresaId: req.empresaId })
+        .select("id nome estoque usaEstoqueBase validade vendas")
+        .lean(),
       EstoqueBase.find({ empresaId: req.empresaId }).lean(),
     ]);
 
@@ -765,13 +834,13 @@ function _converterFatorParaKgOuL(qtd, unidade) {
 // cada (usando $in), processamos tudo em memória, e salvamos em paralelo
 // só os documentos realmente modificados.
 // ============================================================
-async function _carregarDocsPedido(empresaId, itens = []) {
+async function _carregarDocsPedido(empresaId, itens = [], session = null) {
   const produtoIds = [...new Set(itens.map(i => i.produtoId).filter(Boolean))];
   const complementoIds = [...new Set(itens.flatMap(i => (i.complementos || []).map(c => c.id)).filter(Boolean))];
 
   const [produtosArr, complementosArr] = await Promise.all([
-    produtoIds.length ? Produto.find({ empresaId, id: { $in: produtoIds } }) : Promise.resolve([]),
-    complementoIds.length ? Complemento.find({ empresaId, id: { $in: complementoIds } }) : Promise.resolve([]),
+    produtoIds.length ? Produto.find({ empresaId, id: { $in: produtoIds } }).session(session) : Promise.resolve([]),
+    complementoIds.length ? Complemento.find({ empresaId, id: { $in: complementoIds } }).session(session) : Promise.resolve([]),
   ]);
 
   const estoqueBaseIds = new Set();
@@ -779,7 +848,7 @@ async function _carregarDocsPedido(empresaId, itens = []) {
   complementosArr.forEach(c => { if (c.usaEstoqueBase && c.estoqueBaseId) estoqueBaseIds.add(c.estoqueBaseId); });
 
   const estoquesBaseArr = estoqueBaseIds.size
-    ? await EstoqueBase.find({ empresaId, id: { $in: [...estoqueBaseIds] } })
+    ? await EstoqueBase.find({ empresaId, id: { $in: [...estoqueBaseIds] } }).session(session)
     : [];
 
   return {
@@ -798,9 +867,9 @@ async function _carregarDocsPedido(empresaId, itens = []) {
 // pedida inteira, enquanto o tamanho ficava travado em 0 sem poder ir
 // negativo). Retorna uma lista de mensagens de erro (vazia = tudo ok).
 // ============================================================
-async function _validarEstoqueSuficiente(empresaId, itens = []) {
+async function _validarEstoqueSuficiente(empresaId, itens = [], session = null) {
   if (!itens.length) return [];
-  const { produtosMap } = await _carregarDocsPedido(empresaId, itens);
+  const { produtosMap } = await _carregarDocsPedido(empresaId, itens, session);
   const erros = [];
   for (const item of itens) {
     const prod = produtosMap.get(item.produtoId);
@@ -868,9 +937,9 @@ function _sincronizarPausaAutomatica(prod) {
   }
 }
 
-async function _descontarEstoque(empresaId, itens = []) {
+async function _descontarEstoque(empresaId, itens = [], session = null) {
   if (!itens.length) return;
-  const { produtosMap, complementosMap, estoqueBaseMap } = await _carregarDocsPedido(empresaId, itens);
+  const { produtosMap, complementosMap, estoqueBaseMap } = await _carregarDocsPedido(empresaId, itens, session);
   const produtosTocados = new Set();
   const complementosTocados = new Set();
   const estoquesBaseTocados = new Set();
@@ -952,10 +1021,10 @@ async function _descontarEstoque(empresaId, itens = []) {
   }
 
   await Promise.all([
-    ...[...produtosTocados].map(p => p.save()),
-    ...[...complementosTocados].map(c => c.save()),
-    ...[...estoquesBaseTocados].map(e => e.save()),
-    ...(movimentacoesNovas.length ? [MovimentacaoEstoqueBase.insertMany(movimentacoesNovas)] : []),
+    ...[...produtosTocados].map(p => p.save({ session })),
+    ...[...complementosTocados].map(c => c.save({ session })),
+    ...[...estoquesBaseTocados].map(e => e.save({ session })),
+    ...(movimentacoesNovas.length ? [MovimentacaoEstoqueBase.insertMany(movimentacoesNovas, { session })] : []),
   ]);
 
   // Etapa 3: devolve os documentos alterados (em vez de nada) pra quem
@@ -988,9 +1057,9 @@ function _mergeAfetados(a, b) {
   };
 }
 
-async function _reporEstoque(empresaId, itens = []) {
+async function _reporEstoque(empresaId, itens = [], session = null) {
   if (!itens.length) return;
-  const { produtosMap, complementosMap, estoqueBaseMap } = await _carregarDocsPedido(empresaId, itens);
+  const { produtosMap, complementosMap, estoqueBaseMap } = await _carregarDocsPedido(empresaId, itens, session);
   const produtosTocados = new Set();
   const complementosTocados = new Set();
   const estoquesBaseTocados = new Set();
@@ -1064,10 +1133,10 @@ async function _reporEstoque(empresaId, itens = []) {
   }
 
   await Promise.all([
-    ...[...produtosTocados].map(p => p.save()),
-    ...[...complementosTocados].map(c => c.save()),
-    ...[...estoquesBaseTocados].map(e => e.save()),
-    ...(movimentacoesNovas.length ? [MovimentacaoEstoqueBase.insertMany(movimentacoesNovas)] : []),
+    ...[...produtosTocados].map(p => p.save({ session })),
+    ...[...complementosTocados].map(c => c.save({ session })),
+    ...[...estoquesBaseTocados].map(e => e.save({ session })),
+    ...(movimentacoesNovas.length ? [MovimentacaoEstoqueBase.insertMany(movimentacoesNovas, { session })] : []),
   ]);
 
   return {
